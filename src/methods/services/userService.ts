@@ -1,4 +1,4 @@
-import { db } from "../../firebase/config";
+import { db } from "./../../lib/FirebaseClient";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
 export async function setUserPlanData(userId: string, plan: string, timestamp: Date) {
