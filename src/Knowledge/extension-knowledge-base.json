@@ -1,0 +1,181 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-05",
+  "templates": {
+    "todo_list": {
+      "name": "Todo List",
+      "keywords": ["todo", "task", "checklist", "tasks manager"],
+      "structure": {
+        "manifest": "Standard popup extension with storage permission",
+        "html": "Input field, task list container, clear button, empty state",
+        "css": "Modern gradient, smooth animations, hover effects",
+        "js": "CRUD operations with chrome.storage.local"
+      },
+      "code_patterns": {
+        "storage_load": "chrome.storage.local.get(['tasks'], (result) => { const tasks = result.tasks || []; render(tasks); });",
+        "storage_save": "chrome.storage.local.set({ tasks: tasks });",
+        "add_task": "tasks.unshift({ id: Date.now(), text: input.value, completed: false });",
+        "delete_task": "tasks = tasks.filter(t => t.id !== taskId);"
+      }
+    },
+    "pomodoro_timer": {
+      "name": "Pomodoro Timer",
+      "keywords": ["timer", "pomodoro", "focus", "productivity"],
+      "structure": {
+        "manifest": "Popup with notifications and alarms permissions",
+        "html": "Timer display, work/break inputs, start/pause/reset buttons",
+        "css": "Large timer display, colorful buttons, progress indicator",
+        "js": "Interval-based countdown, audio notifications, session tracking"
+      },
+      "code_patterns": {
+        "timer_start": "let intervalId = setInterval(() => { seconds--; updateDisplay(); if (seconds === 0) notify(); }, 1000);",
+        "notification": "chrome.notifications.create({ type: 'basic', title: 'Break Time!', message: 'Take a 5 minute break' });",
+        "audio": "const audio = new Audio('notification.mp3'); audio.play();"
+      }
+    },
+    "bookmark_manager": {
+      "name": "Bookmark Manager",
+      "keywords": ["bookmark", "save", "favorites", "links"],
+      "structure": {
+        "manifest": "Requires bookmarks and tabs permissions",
+        "html": "Search bar, bookmark list, categories, add/delete buttons",
+        "css": "Grid layout, cards for bookmarks, tags",
+        "js": "chrome.bookmarks API, search functionality, categorization"
+      },
+      "code_patterns": {
+        "get_bookmarks": "chrome.bookmarks.getTree((tree) => { processBookmarks(tree); });",
+        "add_bookmark": "chrome.bookmarks.create({ parentId: folderId, title: title, url: url });",
+        "current_tab": "chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { const url = tabs[0].url; });"
+      }
+    },
+    "note_taking": {
+      "name": "Note Taking",
+      "keywords": ["notes", "memo", "write", "editor"],
+      "structure": {
+        "manifest": "Simple popup with storage",
+        "html": "Textarea for note content, save button, note list",
+        "css": "Clean editor interface, auto-save indicator",
+        "js": "Auto-save on input, markdown support optional"
+      },
+      "code_patterns": {
+        "auto_save": "let saveTimeout; input.addEventListener('input', () => { clearTimeout(saveTimeout); saveTimeout = setTimeout(save, 1000); });",
+        "save_note": "chrome.storage.local.set({ [`note_${Date.now()}`]: content });"
+      }
+    },
+    "dark_mode": {
+      "name": "Dark Mode Toggle",
+      "keywords": ["dark mode", "theme", "night mode", "toggle"],
+      "structure": {
+        "manifest": "Content script to inject CSS",
+        "html": "Simple toggle button",
+        "css": "Toggle switch styling",
+        "js": "Inject CSS into active tab, save preference"
+      },
+      "code_patterns": {
+        "inject_css": "chrome.scripting.insertCSS({ target: { tabId: tabId }, css: darkModeCSS });",
+        "toggle": "isDarkMode = !isDarkMode; chrome.storage.local.set({ darkMode: isDarkMode });"
+      }
+    }
+  },
+  "ui_patterns": {
+    "modern_gradient": {
+      "colors": ["#667eea", "#764ba2", "#f093fb"],
+      "usage": "background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);"
+    },
+    "glassmorphism": {
+      "style": "background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);"
+    },
+    "smooth_animations": {
+      "fade_in": "@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }",
+      "slide_in": "@keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }"
+    },
+    "button_styles": {
+      "primary": "background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 8px; padding: 12px 24px; cursor: pointer; font-weight: 600; transition: all 0.3s;",
+      "hover": "transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102,126,234,0.4);"
+    }
+  },
+  "chrome_apis": {
+    "storage": {
+      "description": "Store and retrieve data locally",
+      "get": "chrome.storage.local.get(['key'], (result) => { const value = result.key; });",
+      "set": "chrome.storage.local.set({ key: value }, () => { console.log('Saved'); });",
+      "remove": "chrome.storage.local.remove(['key']);",
+      "clear": "chrome.storage.local.clear();"
+    },
+    "tabs": {
+      "description": "Interact with browser tabs",
+      "get_current": "chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { const tab = tabs[0]; });",
+      "create": "chrome.tabs.create({ url: 'https://example.com' });",
+      "update": "chrome.tabs.update(tabId, { url: newUrl });"
+    },
+    "notifications": {
+      "description": "Show desktop notifications",
+      "create": "chrome.notifications.create({ type: 'basic', iconUrl: 'icon.png', title: 'Title', message: 'Message' });"
+    },
+    "alarms": {
+      "description": "Schedule timed events",
+      "create": "chrome.alarms.create('myAlarm', { delayInMinutes: 1 });",
+      "listener": "chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === 'myAlarm') { doSomething(); } });"
+    }
+  },
+  "best_practices": {
+    "manifest_v3": {
+      "required_fields": ["manifest_version", "name", "version", "description"],
+      "popup_structure": {
+        "action": {
+          "default_popup": "popup.html",
+          "default_icon": "icon.png"
+        }
+      },
+      "permissions": "Only request what you need: ['storage', 'tabs', 'notifications', 'alarms']"
+    },
+    "performance": {
+      "dom_updates": "Batch DOM updates, use documentFragment for multiple insertions",
+      "storage": "Debounce save operations to avoid excessive writes",
+      "event_listeners": "Remove listeners when not needed, use event delegation"
+    },
+    "security": {
+      "input_validation": "Always sanitize user input before displaying",
+      "xss_prevention": "Use textContent instead of innerHTML when possible",
+      "csp": "Include Content-Security-Policy in manifest"
+    },
+    "ui_ux": {
+      "responsiveness": "Design for 320px-600px width",
+      "loading_states": "Show spinners during async operations",
+      "error_handling": "Display user-friendly error messages",
+      "empty_states": "Show helpful messages when no data exists"
+    }
+  },
+  "common_patterns": {
+    "initialization": {
+      "pattern": "document.addEventListener('DOMContentLoaded', () => { loadData(); setupListeners(); });",
+      "description": "Wait for DOM before executing code"
+    },
+    "error_handling": {
+      "pattern": "try { await operation(); } catch (error) { console.error('Error:', error); showErrorMessage(error.message); }",
+      "description": "Graceful error handling with user feedback"
+    },
+    "debounce": {
+      "pattern": "let timeout; input.addEventListener('input', () => { clearTimeout(timeout); timeout = setTimeout(save, 500); });",
+      "description": "Delay execution until user stops typing"
+    },
+    "confirmation": {
+      "pattern": "if (confirm('Are you sure?')) { deleteAll(); }",
+      "description": "Confirm destructive actions"
+    }
+  },
+  "file_structure_rules": {
+    "manifest": "ALWAYS include manifest.json with manifest_version: 3",
+    "html": "Keep HTML semantic, use proper structure with head and body",
+    "css": "Use modern CSS with flexbox/grid, include hover states and transitions",
+    "javascript": "Use strict mode, proper event listeners, async/await for storage",
+    "naming": "Use kebab-case for files: popup.html, popup.css, popup.js"
+  },
+  "code_quality": {
+    "comments": "Add clear comments explaining complex logic",
+    "console_logs": "Include console.log for debugging key operations",
+    "error_messages": "Provide specific, actionable error messages",
+    "code_organization": "Group related functions, use meaningful variable names",
+    "formatting": "Proper indentation (2 spaces), consistent style"
+  }
+}
