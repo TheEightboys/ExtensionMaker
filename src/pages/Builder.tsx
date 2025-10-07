@@ -5,12 +5,16 @@ import Editor from '@monaco-editor/react';
 import {
   Send, Download, FileCode, Loader2, Copy, Check,
   Home, Eye, Code2, Sparkles, Split, User, Bot,
-  ChevronLeft, ChevronRight, X, Minimize2, Maximize2
+  ChevronLeft, ChevronRight, X, Minimize2, Maximize2,
+  Zap, CreditCard, AlertTriangle
 } from 'lucide-react';
-import { generateExtensionCode, GeneratedFile, Message, validateExtension } from '../methods/services/aiService';
+import { generateExtensionCode, GeneratedFile, Message, validateExtension } from './../../src/methods/services/aiService';
+import { getUserCredits, hasCreditsAvailable, useCredit } from './../../src/methods/services/CreditService';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import CodePreview from '../components/CodePreview';
+import { initializeUserCredits } from './../../src/methods/services/CreditService';
+import { signInWithPopup } from 'firebase/auth';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -36,6 +40,11 @@ export default function Builder() {
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
 
+  // Credits state
+  const [credits, setCredits] = useState<any>(null);
+  const [showLowCreditsAlert, setShowLowCreditsAlert] = useState(false);
+  const [creditsLoaded, setCreditsLoaded] = useState(false);
+
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
@@ -50,6 +59,54 @@ export default function Builder() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, streamingText]);
+
+  // Optimized credit loading with timeout
+  const loadUserCredits = async () => {
+    if (!user) return;
+    
+    const loadWithTimeout = Promise.race([
+      getUserCredits(user.uid),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+    ]);
+
+    try {
+      const userCredits = await loadWithTimeout;
+      if (userCredits) {
+        setCredits(userCredits);
+        setCreditsLoaded(true);
+        
+        if (userCredits.creditsRemaining <= 3 && userCredits.plan === 'free') {
+          setShowLowCreditsAlert(true);
+        }
+      } else {
+        // Timeout - set default
+        setCredits({
+          plan: 'free',
+          creditsRemaining: 10,
+          totalCredits: 10,
+          billingPeriod: 'monthly'
+        });
+        setCreditsLoaded(true);
+      }
+    } catch (error) {
+      console.error('Failed to load credits:', error);
+      // Set default on error
+      setCredits({
+        plan: 'free',
+        creditsRemaining: 10,
+        totalCredits: 10,
+        billingPeriod: 'monthly'
+      });
+      setCreditsLoaded(true);
+    }
+  };
+
+  // Load credits on mount (non-blocking)
+  useEffect(() => {
+    if (user) {
+      loadUserCredits();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -74,7 +131,6 @@ export default function Builder() {
       
       const newWidth = e.clientX;
       
-      // Min width: 280px, Max width: 500px
       if (newWidth >= 280 && newWidth <= 500) {
         setSidebarWidth(newWidth);
       }
@@ -95,7 +151,6 @@ export default function Builder() {
     };
   }, [isResizing]);
 
-  // Handle touch for mobile
   useEffect(() => {
     const handleTouchMove = (e: TouchEvent) => {
       if (!isResizing) return;
@@ -122,7 +177,18 @@ export default function Builder() {
       document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isResizing]);
-
+const handleGoogleSignIn = async () => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    
+    // Initialize credits for user
+    await initializeUserCredits(result.user.uid);
+    
+    navigate('/builder');
+  } catch (error) {
+    console.error('Sign in error:', error);
+  }
+};
   const ensureCorrectLanguage = (file: GeneratedFile): GeneratedFile => {
     const filename = file.name.toLowerCase();
     let correctLanguage = 'plaintext';
@@ -141,144 +207,185 @@ export default function Builder() {
   };
 
   const handleGenerate = async (customPrompt?: string) => {
-    const promptText = customPrompt || prompt;
-    if (!promptText.trim()) return;
+  const promptText = customPrompt || prompt;
+  if (!promptText.trim()) return;
 
-    setIsGenerating(true);
-    setError(null);
-    setStreamingText('');
-    setPrompt('');
-
-    const userMessage: ChatMessage = {
-      role: 'user',
-      content: promptText,
-      timestamp: new Date()
-    };
-    setChatMessages(prev => [...prev, userMessage]);
-
-    const assistantMessage: ChatMessage = {
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true
-    };
-    setChatMessages(prev => [...prev, assistantMessage]);
-
-    const newHistory: Message[] = [
-      ...conversationHistory,
-      { role: 'user', content: promptText }
-    ];
-    setConversationHistory(newHistory);
-
-    const existingFiles = files.length > 0 ? files : [];
+  // OPTIMIZED: Fast credit check with 1.5 second timeout
+  if (user && creditsLoaded) {
+    const checkCreditsWithTimeout = Promise.race([
+      hasCreditsAvailable(user.uid),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 1500))
+    ]);
 
     try {
-      let streamedContent = '';
-      
-      const result = await generateExtensionCode(
-        promptText,
-        existingFiles,
-        newHistory,
-        (chunk: string) => {
-          streamedContent += chunk;
-          setStreamingText(streamedContent);
-          
-          setChatMessages(prev => {
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            if (updated[lastIndex].isStreaming) {
-              updated[lastIndex].content = `Generating code...\n\n${streamedContent.substring(0, 200)}...`;
-            }
-            return updated;
-          });
-        },
-        (file: GeneratedFile) => {
-          const correctedFile = ensureCorrectLanguage(file);
-          
-          setFiles(prev => {
-            const existing = prev.findIndex(f => f.name === correctedFile.name);
-            if (existing >= 0) {
-              const updated = [...prev];
-              updated[existing] = correctedFile;
-              return updated;
-            }
-            return [...prev, correctedFile];
-          });
+      const hasCredits = await checkCreditsWithTimeout;
+      if (hasCredits === false) {
+        alert('⚠️ You have run out of prompts! Please upgrade your plan to continue.');
+        navigate('/pricing');
+        return;
+      }
+    } catch (error) {
+      console.error('Credit check failed, proceeding anyway:', error);
+    }
+  }
 
-          setChatMessages(prev => {
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            if (updated[lastIndex].isStreaming) {
-              updated[lastIndex].content = `✅ Generated: ${correctedFile.name}\n${updated[lastIndex].content || ''}`;
-            }
-            return updated;
-          });
-        }
-      );
+  // Start generation immediately
+  setIsGenerating(true);
+  setError(null);
+  setStreamingText('');
+  setPrompt('');
 
-      if (result.files.length > 0) {
-        const correctedFiles = result.files.map(file => ensureCorrectLanguage(file));
+  const userMessage: ChatMessage = {
+    role: 'user',
+    content: promptText,
+    timestamp: new Date()
+  };
+  setChatMessages(prev => [...prev, userMessage]);
+
+  const assistantMessage: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    timestamp: new Date(),
+    isStreaming: true
+  };
+  setChatMessages(prev => [...prev, assistantMessage]);
+
+  const newHistory: Message[] = [
+    ...conversationHistory,
+    { role: 'user', content: promptText }
+  ];
+  setConversationHistory(newHistory);
+
+  const existingFiles = files.length > 0 ? files : [];
+
+  try {
+    let streamedContent = '';
+    
+    const result = await generateExtensionCode(
+      promptText,
+      existingFiles,
+      newHistory,
+      (chunk: string) => {
+        streamedContent += chunk;
+        setStreamingText(streamedContent);
         
-        setFiles(correctedFiles);
-        
-        const validation = validateExtension(correctedFiles);
-        if (!validation.isValid) {
-          console.warn('⚠️ Missing files:', validation.missingFiles);
-        }
-        
-        if (!selectedFile || !correctedFiles.find(f => f.name === selectedFile.name)) {
-          setSelectedFile(correctedFiles[0]);
-        } else {
-          const updatedSelected = correctedFiles.find(f => f.name === selectedFile.name);
-          if (updatedSelected) {
-            setSelectedFile(updatedSelected);
+        setChatMessages(prev => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (updated[lastIndex].isStreaming) {
+            updated[lastIndex].content = `Generating code...\n\n${streamedContent.substring(0, 200)}...`;
           }
+          return updated;
+        });
+      },
+      (file: GeneratedFile) => {
+        const correctedFile = ensureCorrectLanguage(file);
+        
+        setFiles(prev => {
+          const existing = prev.findIndex(f => f.name === correctedFile.name);
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = correctedFile;
+            return updated;
+          }
+          return [...prev, correctedFile];
+        });
+
+        setChatMessages(prev => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (updated[lastIndex].isStreaming) {
+            updated[lastIndex].content = `✅ Generated: ${correctedFile.name}\n${updated[lastIndex].content || ''}`;
+          }
+          return updated;
+        });
+      }
+    );
+
+    if (result.files.length > 0) {
+      const correctedFiles = result.files.map(file => ensureCorrectLanguage(file));
+      
+      setFiles(correctedFiles);
+      
+      const validation = validateExtension(correctedFiles);
+      if (!validation.isValid) {
+        console.warn('⚠️ Missing files:', validation.missingFiles);
+      }
+      
+      if (!selectedFile || !correctedFiles.find(f => f.name === selectedFile.name)) {
+        setSelectedFile(correctedFiles[0]);
+      } else {
+        const updatedSelected = correctedFiles.find(f => f.name === selectedFile.name);
+        if (updatedSelected) {
+          setSelectedFile(updatedSelected);
         }
       }
-
-      const finalMessage = result.explanation || result.response;
-      setChatMessages(prev => {
-        const updated = [...prev];
-        const lastIndex = updated.length - 1;
-        updated[lastIndex] = {
-          role: 'assistant',
-          content: finalMessage + `\n\n📁 Generated ${result.files.length} files:\n${result.files.map(f => `• ${f.name}`).join('\n')}`,
-          timestamp: new Date(),
-          isStreaming: false
-        };
-        return updated;
-      });
-
-      setConversationHistory([
-        ...newHistory,
-        { role: 'assistant', content: finalMessage }
-      ]);
-
-    } catch (error: any) {
-      console.error('❌ Generation error:', error);
-      setError(error.message);
-      
-      setChatMessages(prev => {
-        const updated = [...prev];
-        const lastIndex = updated.length - 1;
-        updated[lastIndex] = {
-          role: 'assistant',
-          content: `❌ Error: ${error.message}`,
-          timestamp: new Date(),
-          isStreaming: false
-        };
-        return updated;
-      });
-
-      setConversationHistory([
-        ...newHistory,
-        { role: 'assistant', content: `Error: ${error.message}` }
-      ]);
-    } finally {
-      setIsGenerating(false);
-      setStreamingText('');
     }
-  };
+
+    const finalMessage = result.explanation || result.response;
+    setChatMessages(prev => {
+      const updated = [...prev];
+      const lastIndex = updated.length - 1;
+      updated[lastIndex] = {
+        role: 'assistant',
+        content: finalMessage + `\n\n📁 Generated ${result.files.length} files:\n${result.files.map(f => `• ${f.name}`).join('\n')}`,
+        timestamp: new Date(),
+        isStreaming: false
+      };
+      return updated;
+    });
+
+    setConversationHistory([
+      ...newHistory,
+      { role: 'assistant', content: finalMessage }
+    ]);
+
+    // Deduct credit AFTER successful generation
+    if (user) {
+      console.log('💳 Deducting credit for user:', user.uid);
+      try {
+        const creditUsed = await useCredit(user.uid);
+        if (creditUsed) {
+          console.log('✅ Credit deducted successfully');
+          // Force reload credits and update UI
+          const updatedCredits = await getUserCredits(user.uid);
+          if (updatedCredits) {
+            setCredits(updatedCredits);
+            console.log('✅ Credits updated in UI:', updatedCredits.creditsRemaining);
+          }
+        } else {
+          console.error('⚠️ Failed to deduct credit - user may be out of credits');
+        }
+      } catch (err) {
+        console.error('❌ Credit deduction error:', err);
+      }
+    }
+
+  } catch (error: any) {
+    console.error('❌ Generation error:', error);
+    setError(error.message);
+    
+    setChatMessages(prev => {
+      const updated = [...prev];
+      const lastIndex = updated.length - 1;
+      updated[lastIndex] = {
+        role: 'assistant',
+        content: `❌ Error: ${error.message}`,
+        timestamp: new Date(),
+        isStreaming: false
+      };
+      return updated;
+    });
+
+    setConversationHistory([
+      ...newHistory,
+      { role: 'assistant', content: `Error: ${error.message}` }
+    ]);
+  } finally {
+    setIsGenerating(false);
+    setStreamingText('');
+  }
+};
 
   const handleDownload = async () => {
     if (files.length === 0) return;
@@ -374,6 +481,30 @@ Generated on: ${new Date().toLocaleString()}
           </div>
         </div>
         <div className="header-actions">
+          {/* Credits Display */}
+          {user && credits && (
+            <div className={`credits-display-header ${credits.plan === 'free' && credits.creditsRemaining <= 3 ? 'credits-low' : ''}`}>
+              <div className="credits-badge-header">
+                <Zap size={18} className="credits-icon-header" />
+                <div className="credits-info-header">
+                  <span className="credits-count-header">
+                    <strong>{credits.creditsRemaining}</strong> / {credits.totalCredits}
+                  </span>
+                  <span className="credits-label-header">Prompts</span>
+                </div>
+              </div>
+              {credits.plan === 'free' && (
+                <button 
+                  onClick={() => navigate('/pricing')}
+                  className="credits-upgrade-btn-header"
+                >
+                  <CreditCard size={14} />
+                  Upgrade
+                </button>
+              )}
+            </div>
+          )}
+
           {validFiles.length > 0 && (
             <>
               <div className="view-mode-switcher">
@@ -408,8 +539,24 @@ Generated on: ${new Date().toLocaleString()}
         </div>
       </header>
 
+      {/* Low Credits Alert */}
+      {showLowCreditsAlert && credits && credits.creditsRemaining <= 3 && credits.plan === 'free' && (
+        <div className="low-credits-alert">
+          <AlertTriangle size={20} className="alert-icon" />
+          <div className="alert-content">
+            <strong>Running low on prompts!</strong>
+            <p>You have only {credits.creditsRemaining} prompt{credits.creditsRemaining !== 1 ? 's' : ''} left.</p>
+          </div>
+          <button onClick={() => navigate('/pricing')} className="alert-upgrade-btn">
+            View Plans
+          </button>
+          <button onClick={() => setShowLowCreditsAlert(false)} className="alert-close-btn">
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="builder-layout">
-        {/* Sidebar Toggle Button (when closed) */}
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
@@ -420,10 +567,8 @@ Generated on: ${new Date().toLocaleString()}
           </button>
         )}
 
-        {/* LEFT SIDEBAR - Collapsible & Resizable */}
         {sidebarOpen && (
           <>
-            {/* Mobile Overlay */}
             {window.innerWidth < 768 && (
               <div 
                 className="sidebar-overlay"
@@ -436,7 +581,6 @@ Generated on: ${new Date().toLocaleString()}
               className={`builder-sidebar ${sidebarMinimized ? 'minimized' : ''} ${isResizing ? 'resizing' : ''}`}
               style={{ width: sidebarMinimized ? '60px' : `${sidebarWidth}px` }}
             >
-              {/* Resize Handle */}
               {!sidebarMinimized && (
                 <div
                   className="resize-handle"
@@ -447,7 +591,6 @@ Generated on: ${new Date().toLocaleString()}
                 </div>
               )}
 
-              {/* Sidebar Header */}
               <div className="sidebar-header-actions">
                 <button
                   onClick={() => setSidebarMinimized(!sidebarMinimized)}
@@ -467,7 +610,6 @@ Generated on: ${new Date().toLocaleString()}
 
               {!sidebarMinimized && (
                 <>
-                  {/* Chat Section */}
                   <div className="chat-section">
                     <div className="chat-header">
                       <Sparkles size={18} />
@@ -507,7 +649,6 @@ Generated on: ${new Date().toLocaleString()}
                     </div>
                   </div>
 
-                  {/* Files Section */}
                   <div className="files-section">
                     <div className="sidebar-header">
                       <Code2 size={18} />
@@ -551,7 +692,6 @@ Generated on: ${new Date().toLocaleString()}
           </>
         )}
 
-        {/* MAIN CONTENT - Code Editor + Preview */}
         <main className="builder-main">
           <div className="content-area">
             {viewMode !== 'preview' && (
@@ -606,7 +746,6 @@ Generated on: ${new Date().toLocaleString()}
             )}
           </div>
 
-          {/* CHAT INPUT - Bottom */}
           <div className="chat-input-wrapper">
             <form onSubmit={(e) => { e.preventDefault(); handleGenerate(); }} className="chat-form">
               <input
