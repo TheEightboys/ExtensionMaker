@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { GeneratedFile } from './../methods/services/aiService';
-import { RefreshCw, Eye, Maximize2, X, Info, ExternalLink, CheckCircle, FileCode, Download, Copy, Check, Zap, CreditCard } from 'lucide-react';
+import { RefreshCw, Eye, Maximize2, X, Info, ExternalLink, CheckCircle, FileCode, Copy, Check, Zap, CreditCard } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserCredits } from './../../src/methods/services/CreditService';
 import { useNavigate } from 'react-router-dom';
 
 interface CodePreviewProps {
   files: GeneratedFile[];
+  onBrowserSelect?: (browser: BrowserType) => void;
 }
 
 // Browser logos from CDN
@@ -18,6 +19,77 @@ const BROWSER_LOGOS = {
 };
 
 type BrowserType = 'chrome' | 'firefox' | 'edge' | 'safari';
+
+// NEW: Browser Selection Modal Component
+const BrowserSelectionModal: React.FC<{
+  onSelect: (browser: BrowserType) => void;
+  onClose: () => void;
+}> = ({ onSelect, onClose }) => {
+  const browsers = [
+    { 
+      type: 'chrome' as BrowserType, 
+      name: 'Chrome', 
+      subtitle: 'Works for Chrome, Brave, Opera, Vivaldi',
+      color: '#4285F4',
+      icon: '🎨'
+    },
+    { 
+      type: 'firefox' as BrowserType, 
+      name: 'Firefox', 
+      subtitle: 'Mozilla Firefox & Firefox Developer Edition',
+      color: '#FF6611',
+      icon: '🦊'
+    },
+    { 
+      type: 'edge' as BrowserType, 
+      name: 'Edge', 
+      subtitle: 'Chromium-based Edge Browser',
+      color: '#0078D7',
+      icon: '🌐'
+    },
+    { 
+      type: 'safari' as BrowserType, 
+      name: 'Safari', 
+      subtitle: 'macOS Safari (Requires Xcode)',
+      color: '#006CFF',
+      icon: '🧭'
+    }
+  ];
+
+  return (
+    <div className="browser-modal-overlay" onClick={onClose}>
+      <div className="browser-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="browser-modal-header">
+          <h2>Select Your Browser</h2>
+          <p>Choose the browser you want to preview your extension in</p>
+        </div>
+        
+        <div className="browser-grid">
+          {browsers.map((browser) => (
+            <button
+              key={browser.type}
+              onClick={() => onSelect(browser.type)}
+              className="browser-card"
+              style={{ '--browser-color': browser.color } as React.CSSProperties}
+            >
+              <div className="browser-card-icon">
+                <img src={BROWSER_LOGOS[browser.type]} alt={browser.name} />
+              </div>
+              <div className="browser-card-content">
+                <h3>{browser.icon} {browser.name}</h3>
+                <p>{browser.subtitle}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button onClick={onClose} className="browser-modal-close">
+          <X size={20} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const InstallationGuide: React.FC<{ browser: BrowserType }> = ({ browser }) => {
   const guides = {
@@ -233,15 +305,15 @@ const FilesList: React.FC<{ files: GeneratedFile[] }> = ({ files }) => {
   );
 };
 
-const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
+const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>('chrome');
+  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType | null>(null);
+  const [showBrowserModal, setShowBrowserModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
-  // NEW: Credits state
   const { user } = useAuth();
   const navigate = useNavigate();
   const [credits, setCredits] = useState<any>(null);
@@ -254,14 +326,25 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
         const userCredits = await getUserCredits(user.uid);
         setCredits(userCredits);
         
-        // Show upgrade prompt if free user with low credits
-        if (userCredits?.plan === 'free' && userCredits.creditsRemaining <= 3) {
+        if (userCredits?.plan === 'free' && userCredits.credits <= 3) {
           setShowUpgradePrompt(true);
         }
       }
     };
     loadCredits();
   }, [user]);
+
+  // Show browser selection modal when files are first generated
+  useEffect(() => {
+    if (files.length > 0 && !selectedBrowser) {
+      const savedBrowser = localStorage.getItem('preferredBrowser') as BrowserType;
+      if (savedBrowser) {
+        setSelectedBrowser(savedBrowser);
+      } else {
+        setShowBrowserModal(true);
+      }
+    }
+  }, [files]);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -271,7 +354,15 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Dynamically detect entry point HTML file
+  const handleBrowserSelection = (browser: BrowserType) => {
+    setSelectedBrowser(browser);
+    localStorage.setItem('preferredBrowser', browser);
+    setShowBrowserModal(false);
+    if (onBrowserSelect) {
+      onBrowserSelect(browser);
+    }
+  };
+
   const entryFile = useMemo(() => {
     return files.find(f => f.name === 'popup.html') ||
            files.find(f => f.name === 'index.html') ||
@@ -279,29 +370,25 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
            files.find(f => f.name.endsWith('.html'));
   }, [files]);
 
-  // Dynamically detect all CSS files
   const cssFiles = useMemo(() => {
     return files.filter(f => f.name.endsWith('.css') || f.language === 'css');
   }, [files]);
 
-  // Dynamically detect all JS files
   const jsFiles = useMemo(() => {
     return files.filter(f => f.name.endsWith('.js') || f.language === 'javascript');
   }, [files]);
 
   const previewHtml = useMemo(() => {
-    if (!entryFile) return null;
+    if (!entryFile || !selectedBrowser) return null;
 
     try {
       let html = entryFile.content;
 
-      // Inline ALL CSS files dynamically
       cssFiles.forEach(cssFile => {
         const cssLinkPattern = new RegExp(`<link[^>]*href=["']${cssFile.name}["'][^>]*>`, 'gi');
         html = html.replace(cssLinkPattern, `<style>${cssFile.content}</style>`);
       });
 
-      // Inline unlinked CSS files
       const linkedCssFiles = cssFiles.filter(cssFile => 
         html.includes(`href="${cssFile.name}"`) || html.includes(`href='${cssFile.name}'`)
       );
@@ -315,7 +402,6 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
         html = html.replace(/<\/head>/i, `${additionalStyles}</head>`);
       }
 
-      // Browser-specific API mocking
       const mockAPI = ['chrome', 'edge'].includes(selectedBrowser) ? `
 <script>
   (function() {
@@ -451,13 +537,11 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
 
       html = html.replace(/<\/head>/i, `${mockAPI}</head>`);
 
-      // Inline ALL JS files dynamically
       jsFiles.forEach(jsFile => {
         const jsPattern = new RegExp(`<script[^>]*src=["']${jsFile.name}["'][^>]*><\/script>`, 'gi');
         html = html.replace(jsPattern, `<script>${jsFile.content}</script>`);
       });
 
-      // Enhanced base responsive styles
       const baseStyles = `<style>
         html,body{margin:0;padding:0;width:100%;height:100%;overflow-x:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;}
         *{box-sizing:border-box;}
@@ -524,24 +608,37 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
     );
   }
 
-  const browsers: BrowserType[] = ['chrome', 'firefox', 'edge', 'safari'];
+  const browserInfo = selectedBrowser ? {
+    chrome: { name: 'Chrome', icon: '🎨', color: '#4285F4' },
+    firefox: { name: 'Firefox', icon: '🦊', color: '#FF6611' },
+    edge: { name: 'Edge', icon: '🌐', color: '#0078D7' },
+    safari: { name: 'Safari', icon: '🧭', color: '#006CFF' }
+  }[selectedBrowser] : null;
 
   return (
     <>
+      {/* Browser Selection Modal */}
+      {showBrowserModal && (
+        <BrowserSelectionModal 
+          onSelect={handleBrowserSelection}
+          onClose={() => setShowBrowserModal(false)}
+        />
+      )}
+
       <div className="preview-container">
-        {/* NEW: Credits Banner */}
+        {/* Credits Banner */}
         {credits && (
-          <div className={`credits-banner ${credits.plan === 'free' && credits.creditsRemaining <= 3 ? 'credits-low' : ''}`}>
+          <div className={`credits-banner ${credits.plan === 'free' && credits.credits <= 3 ? 'credits-low' : ''}`}>
             <div className="credits-info">
               <Zap size={16} className="credits-icon" />
               <span className="credits-text">
-                <strong>{credits.creditsRemaining}</strong> / {credits.totalCredits} prompts left
+                <strong>{credits.credits}</strong> / {credits.maxCredits} prompts left
               </span>
               <span className="credits-plan">({credits.plan} plan)</span>
             </div>
-            {credits.plan === 'free' && credits.creditsRemaining <= 3 && (
+            {credits.plan === 'free' && credits.credits <= 3 && (
               <button 
-                onClick={() => navigate('/pricing')}
+                onClick={() => navigate('/#pricing')}
                 className="credits-upgrade-btn"
               >
                 <CreditCard size={14} />
@@ -555,25 +652,24 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
           <div className="preview-label">
             <Eye size={18} strokeWidth={2} />
             {!isMobile && <span>Live Preview</span>}
-            <span className="file-indicator">{entryFile.name}</span>
+            {selectedBrowser && browserInfo && (
+              <span className="browser-indicator" style={{ color: browserInfo.color }}>
+                {browserInfo.icon} {browserInfo.name}
+              </span>
+            )}
           </div>
           
           <div className="preview-toolbar">
-            <div className="browser-tabs">
-              {browsers.map(browser => (
-                <button
-                  key={browser}
-                  onClick={() => setSelectedBrowser(browser)}
-                  className={`browser-tab ${selectedBrowser === browser ? 'active' : ''}`}
-                  type="button"
-                  title={`${browser.charAt(0).toUpperCase() + browser.slice(1)} Browser`}
-                >
-                  <img src={BROWSER_LOGOS[browser]} alt={browser} className="browser-logo" />
-                  {!isMobile && <span>{browser.charAt(0).toUpperCase() + browser.slice(1)}</span>}
-                </button>
-              ))}
-            </div>
             <div className="preview-actions-group">
+              <button 
+                onClick={() => setShowBrowserModal(true)}
+                className="icon-btn browser-change-btn"
+                title="Change Browser"
+                type="button"
+              >
+                {selectedBrowser && <img src={BROWSER_LOGOS[selectedBrowser]} alt="browser" className="browser-logo-small" />}
+                <span>Change</span>
+              </button>
               <button 
                 onClick={() => setShowGuide(!showGuide)} 
                 className={`icon-btn ${showGuide ? 'active' : ''}`}
@@ -603,21 +699,21 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
           </div>
         </div>
 
-        {/* NEW: Upgrade Prompt for Free Users */}
+        {/* Upgrade Prompt */}
         {showUpgradePrompt && credits?.plan === 'free' && (
           <div className="upgrade-prompt">
             <div className="upgrade-content">
               <Zap size={24} className="upgrade-icon" />
               <div className="upgrade-text">
                 <h4>Running low on prompts!</h4>
-                <p>You have only <strong>{credits.creditsRemaining}</strong> prompts left. Upgrade to continue building amazing extensions.</p>
+                <p>You have only <strong>{credits.credits}</strong> prompts left. Upgrade to continue building amazing extensions.</p>
               </div>
             </div>
             <div className="upgrade-actions">
               <button onClick={() => setShowUpgradePrompt(false)} className="upgrade-dismiss">
                 Later
               </button>
-              <button onClick={() => navigate('/pricing')} className="upgrade-cta">
+              <button onClick={() => navigate('/#pricing')} className="upgrade-cta">
                 View Plans
               </button>
             </div>
@@ -628,11 +724,11 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
           {showGuide ? (
             <div className="guide-panel">
               <FilesList files={files} />
-              <InstallationGuide browser={selectedBrowser} />
+              {selectedBrowser && <InstallationGuide browser={selectedBrowser} />}
             </div>
           ) : (
             <div className="preview-viewport">
-              {previewUrl ? (
+              {previewUrl && selectedBrowser ? (
                 <iframe
                   key={`${previewUrl}-${selectedBrowser}`}
                   src={previewUrl}
@@ -652,46 +748,34 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files }) => {
                   <FileCode size={14} />
                   <span>{files.length} files</span>
                 </div>
-                <div className="info-item">
-                  <span className={`api-badge ${selectedBrowser}`}>
-                    {selectedBrowser === 'chrome' && '🎨 Chrome API'}
-                    {selectedBrowser === 'firefox' && '🦊 Firefox API'}
-                    {selectedBrowser === 'edge' && '🌐 Edge API'}
-                    {selectedBrowser === 'safari' && '🧭 Safari API'}
-                  </span>
-                </div>
+                {selectedBrowser && browserInfo && (
+                  <div className="info-item">
+                    <span className="api-badge" style={{ backgroundColor: `${browserInfo.color}15`, color: browserInfo.color }}>
+                      {browserInfo.icon} {browserInfo.name} API
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {isFullscreen && (
+      {isFullscreen && selectedBrowser && (
         <div className="fullscreen-overlay" onClick={() => setIsFullscreen(false)}>
           <div className="fullscreen-modal" onClick={(e) => e.stopPropagation()}>
             <div className="fullscreen-topbar">
               <div className="fullscreen-label">
                 <Eye size={20} />
                 <span>Live Preview</span>
-                <span className="file-indicator">{entryFile.name}</span>
+                {browserInfo && (
+                  <span className="browser-indicator" style={{ color: browserInfo.color }}>
+                    {browserInfo.icon} {browserInfo.name}
+                  </span>
+                )}
               </div>
               
               <div className="fullscreen-toolbar">
-                <div className="browser-tabs">
-                  {browsers.map(browser => (
-                    <button
-                      key={browser}
-                      onClick={() => setSelectedBrowser(browser)}
-                      className={`browser-tab ${selectedBrowser === browser ? 'active' : ''}`}
-                      type="button"
-                      title={browser}
-                    >
-                      <img src={BROWSER_LOGOS[browser]} alt={browser} className="browser-logo" />
-                      <span>{browser.charAt(0).toUpperCase() + browser.slice(1)}</span>
-                    </button>
-                  ))}
-                </div>
-                
                 <div className="fullscreen-actions">
                   <button onClick={handleRefresh} className="icon-btn" type="button" title="Refresh">
                     <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />

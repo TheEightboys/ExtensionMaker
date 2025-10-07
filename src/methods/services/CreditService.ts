@@ -1,54 +1,120 @@
-import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+// src/services/CreditService.ts - COMPLETE FIXED VERSION
+
+import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from './../../lib/FirebaseClient';
 
-interface UserCredits {
+export interface UserCredits {
   plan: 'free' | 'basic' | 'pro';
-  creditsRemaining: number;
-  totalCredits: number;
+  credits: number;
+  maxCredits: number;
   billingPeriod: 'monthly' | 'yearly';
-  lastReset: Date;
-  createdAt: Date;
+  lastResetDate: string;
+  nextResetDate: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Credit limits by plan
 const CREDIT_LIMITS = {
-  free: 10,
-  basic: {
-    monthly: 100,
-    yearly: 150
-  },
-  pro: {
-    monthly: 500,
-    yearly: 750
+  free: 30,
+  basic: { monthly: 130 },
+  pro: { monthly: 999999 }
+};
+
+// Calculate next reset date (first day of next month)
+const getNextResetDate = (billingPeriod: 'monthly' | 'yearly'): Date => {
+  const now = new Date();
+  const nextReset = new Date(now);
+  
+  if (billingPeriod === 'monthly') {
+    nextReset.setMonth(nextReset.getMonth() + 1);
+    nextReset.setDate(1);
+    nextReset.setHours(0, 0, 0, 0);
+  } else {
+    nextReset.setFullYear(nextReset.getFullYear() + 1);
+    nextReset.setMonth(0);
+    nextReset.setDate(1);
+    nextReset.setHours(0, 0, 0, 0);
   }
+  
+  return nextReset;
+};
+
+// Get days until next reset
+export const getDaysUntilReset = (nextResetDate: string): number => {
+  const now = new Date();
+  const resetDate = new Date(nextResetDate);
+  const diffTime = resetDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
 };
 
 // Initialize user credits on signup
-export const initializeUserCredits = async (userId: string) => {
+export const initializeUserCredits = async (userId: string): Promise<void> => {
   try {
     const creditsRef = doc(db, 'userCredits', userId);
     
-    // Check if already exists
     const existing = await getDoc(creditsRef);
     if (existing.exists()) {
       console.log('✅ Credits already initialized');
       return;
     }
     
-    await setDoc(creditsRef, {
-      plan: 'free',
-      creditsRemaining: CREDIT_LIMITS.free,
-      totalCredits: CREDIT_LIMITS.free,
-      billingPeriod: 'monthly',
-      lastReset: new Date(),
-      createdAt: new Date()
-    });
+    const now = new Date();
+    const nextReset = getNextResetDate('monthly');
     
-    console.log('✅ Credits initialized for user:', userId);
+    const initialCredits: UserCredits = {
+      plan: 'free',
+      credits: CREDIT_LIMITS.free,
+      maxCredits: CREDIT_LIMITS.free,
+      billingPeriod: 'monthly',
+      lastResetDate: now.toISOString(),
+      nextResetDate: nextReset.toISOString(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
+    
+    await setDoc(creditsRef, initialCredits);
+    
+    console.log('✅ Credits initialized:', initialCredits);
   } catch (error) {
     console.error('❌ Failed to initialize credits:', error);
     throw error;
   }
+};
+
+// Check if reset is needed and perform reset
+const checkAndResetCredits = async (userId: string, credits: UserCredits): Promise<UserCredits> => {
+  const now = new Date();
+  const nextResetDate = new Date(credits.nextResetDate);
+  
+  // Check if reset is due
+  if (now >= nextResetDate) {
+    console.log('🔄 Resetting credits...');
+    
+    const newNextReset = getNextResetDate(credits.billingPeriod);
+    const creditsRef = doc(db, 'userCredits', userId);
+    
+    const updatedCredits: UserCredits = {
+      ...credits,
+      credits: credits.maxCredits,
+      lastResetDate: now.toISOString(),
+      nextResetDate: newNextReset.toISOString(),
+      updatedAt: now.toISOString()
+    };
+    
+    await updateDoc(creditsRef, {
+      credits: credits.maxCredits,
+      lastResetDate: now.toISOString(),
+      nextResetDate: newNextReset.toISOString(),
+      updatedAt: now.toISOString()
+    });
+    
+    console.log('✅ Credits reset to:', credits.maxCredits);
+    return updatedCredits;
+  }
+  
+  return credits;
 };
 
 // Get user credits
@@ -58,16 +124,24 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
     const creditsSnap = await getDoc(creditsRef);
     
     if (creditsSnap.exists()) {
-      const data = creditsSnap.data();
-      console.log('✅ Got credits:', data);
-      return data as UserCredits;
+      const data = creditsSnap.data() as UserCredits;
+      
+      // Check if reset is needed
+      const updatedCredits = await checkAndResetCredits(userId, data);
+      
+      console.log('💳 User credits:', {
+        plan: updatedCredits.plan,
+        credits: updatedCredits.credits,
+        maxCredits: updatedCredits.maxCredits
+      });
+      
+      return updatedCredits;
     }
     
     // Initialize if doesn't exist
     console.log('⚠️ Credits not found, initializing...');
     await initializeUserCredits(userId);
     
-    // Get again after initialization
     const newSnap = await getDoc(creditsRef);
     if (newSnap.exists()) {
       return newSnap.data() as UserCredits;
@@ -80,23 +154,23 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
   }
 };
 
-// Check if user has credits
+// Check if user has credits available
 export const hasCreditsAvailable = async (userId: string): Promise<boolean> => {
   try {
     const credits = await getUserCredits(userId);
-    const hasCredits = credits ? credits.creditsRemaining > 0 : false;
-    console.log('💳 Credits available:', hasCredits, 'Remaining:', credits?.creditsRemaining);
+    const hasCredits = credits ? credits.credits > 0 : false;
+    console.log('💳 Credits available:', hasCredits, 'Remaining:', credits?.credits);
     return hasCredits;
   } catch (error) {
     console.error('❌ Failed to check credits:', error);
-    return true; // Default to true on error
+    return false;
   }
 };
 
 // Use a credit (deduct 1)
 export const useCredit = async (userId: string): Promise<boolean> => {
   try {
-    console.log('🔄 Attempting to deduct credit for user:', userId);
+    console.log('🔄 Attempting to use credit for user:', userId);
     
     const credits = await getUserCredits(userId);
     
@@ -105,22 +179,54 @@ export const useCredit = async (userId: string): Promise<boolean> => {
       return false;
     }
     
-    if (credits.creditsRemaining <= 0) {
+    if (credits.credits <= 0) {
       console.error('❌ No credits remaining');
       return false;
     }
     
     const creditsRef = doc(db, 'userCredits', userId);
     
-    // Use transaction-like update
+    // Deduct 1 credit
     await updateDoc(creditsRef, {
-      creditsRemaining: credits.creditsRemaining - 1
+      credits: increment(-1),
+      updatedAt: new Date().toISOString()
     });
     
-    console.log('✅ Credit deducted! New balance:', credits.creditsRemaining - 1);
+    console.log('✅ Credit used! New balance:', credits.credits - 1);
     return true;
   } catch (error) {
-    console.error('❌ Failed to deduct credit:', error);
+    console.error('❌ Failed to use credit:', error);
+    return false;
+  }
+};
+
+// Add extra credits (for one-time purchases)
+export const addExtraCredits = async (userId: string, creditsToAdd: number): Promise<boolean> => {
+  try {
+    console.log(`🔄 Adding ${creditsToAdd} extra credits to user:`, userId);
+    
+    const creditsRef = doc(db, 'userCredits', userId);
+    const creditsSnap = await getDoc(creditsRef);
+    
+    if (!creditsSnap.exists()) {
+      console.error('❌ User credits not found');
+      return false;
+    }
+    
+    await updateDoc(creditsRef, {
+      credits: increment(creditsToAdd),
+      updatedAt: new Date().toISOString(),
+      [`purchases.${Date.now()}`]: {
+        credits: creditsToAdd,
+        date: new Date().toISOString(),
+        type: 'one-time'
+      }
+    });
+    
+    console.log(`✅ Added ${creditsToAdd} extra credits`);
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to add extra credits:', error);
     return false;
   }
 };
@@ -130,54 +236,51 @@ export const upgradePlan = async (
   userId: string, 
   plan: 'basic' | 'pro', 
   billingPeriod: 'monthly' | 'yearly'
-) => {
+): Promise<void> => {
   try {
     const creditsRef = doc(db, 'userCredits', userId);
     
     let totalCredits = 0;
     if (plan === 'basic') {
-      totalCredits = billingPeriod === 'monthly' ? CREDIT_LIMITS.basic.monthly : CREDIT_LIMITS.basic.yearly;
+      totalCredits = CREDIT_LIMITS.basic.monthly;
     } else if (plan === 'pro') {
-      totalCredits = billingPeriod === 'monthly' ? CREDIT_LIMITS.pro.monthly : CREDIT_LIMITS.pro.yearly;
+      totalCredits = CREDIT_LIMITS.pro.monthly;
     }
+    
+    const now = new Date();
+    const nextReset = getNextResetDate(billingPeriod);
     
     await updateDoc(creditsRef, {
       plan,
       billingPeriod,
-      creditsRemaining: totalCredits,
-      totalCredits,
-      lastReset: new Date()
+      credits: totalCredits,
+      maxCredits: totalCredits,
+      lastResetDate: now.toISOString(),
+      nextResetDate: nextReset.toISOString(),
+      updatedAt: now.toISOString()
     });
     
-    console.log('✅ Plan upgraded to:', plan, billingPeriod);
+    console.log('✅ Plan upgraded to:', plan, 'with', totalCredits, 'credits');
   } catch (error) {
     console.error('❌ Failed to upgrade plan:', error);
     throw error;
   }
 };
 
-// Reset credits monthly (run via Cloud Function)
-export const resetMonthlyCredits = async (userId: string) => {
+// Reset credits manually (admin function)
+export const resetCreditsManually = async (userId: string): Promise<void> => {
   try {
     const credits = await getUserCredits(userId);
     if (!credits) return;
     
-    let totalCredits = 0;
-    if (credits.plan === 'free') {
-      totalCredits = CREDIT_LIMITS.free;
-    } else if (credits.plan === 'basic') {
-      totalCredits = credits.billingPeriod === 'monthly' ? CREDIT_LIMITS.basic.monthly : CREDIT_LIMITS.basic.yearly;
-    } else if (credits.plan === 'pro') {
-      totalCredits = credits.billingPeriod === 'monthly' ? CREDIT_LIMITS.pro.monthly : CREDIT_LIMITS.pro.yearly;
-    }
-    
     const creditsRef = doc(db, 'userCredits', userId);
     await updateDoc(creditsRef, {
-      creditsRemaining: totalCredits,
-      lastReset: new Date()
+      credits: credits.maxCredits,
+      lastResetDate: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     });
     
-    console.log('✅ Credits reset to:', totalCredits);
+    console.log('✅ Credits manually reset');
   } catch (error) {
     console.error('❌ Failed to reset credits:', error);
     throw error;

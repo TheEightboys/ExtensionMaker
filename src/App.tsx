@@ -8,7 +8,7 @@ import Signup from "./pages/SignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import  Builder  from"./pages/Builder";
-
+import PaymentSuccess from './pages/PaymentSuccess';
 const AppRoutes = () => {
   const { user, loading } = useAuth();
 
@@ -39,6 +39,7 @@ const AppRoutes = () => {
           path="/builder" 
           element={user ? <Builder /> : <Navigate to="/signup" replace />} 
         />
+        <Route path="/payment/success" element={<PaymentSuccess />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
