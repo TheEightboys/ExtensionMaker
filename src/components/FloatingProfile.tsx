@@ -1,4 +1,4 @@
-// src/components/FloatingProfile.tsx - COMPLETE WITH EXPIRATION DATE
+// src/components/FloatingProfile.tsx - FINAL VERSION WITH FIRESTORE
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,8 @@ import {
   Folder, Clock, Zap, Crown, Plus
 } from 'lucide-react';
 import { getUserCredits, UserCredits } from '../methods/services/CreditService';
+import { collection, query, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '../lib/FirebaseClient';
 
 // Format date helper
 const formatDate = (dateString: string): string => {
@@ -30,16 +32,42 @@ export const FloatingProfile: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [credits, setCredits] = useState<UserCredits | null>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Load credits
   useEffect(() => {
     if (user) {
       getUserCredits(user.uid).then(setCredits);
-      const savedHistory = localStorage.getItem('projectHistory');
-      if (savedHistory) {
-        try {
-          setHistory(JSON.parse(savedHistory));
-        } catch (e) {}
+    }
+  }, [user]);
+
+  // Load user-specific project history from Firestore
+  useEffect(() => {
+    const loadUserProjects = async () => {
+      if (!user) return;
+      
+      setLoadingHistory(true);
+      try {
+        const projectsRef = collection(db, 'users', user.uid, 'projects');
+        const q = query(projectsRef, orderBy('lastModified', 'desc'), limit(10));
+        const querySnapshot = await getDocs(q);
+
+        const projects = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        setHistory(projects);
+        console.log('✅ Loaded user projects:', projects.length);
+      } catch (error) {
+        console.error('❌ Error loading projects:', error);
+      } finally {
+        setLoadingHistory(false);
       }
+    };
+
+    if (user) {
+      loadUserProjects();
     }
   }, [user]);
 
@@ -95,37 +123,36 @@ export const FloatingProfile: React.FC = () => {
             )}
           </div>
           <div className="profile-details-fp">
-  <div className="profile-name-fp">{user.displayName || 'User'}</div>
-  <div className="profile-email-fp">{user.email}</div>
-  {credits && (
-    <>
-      {/* Credits Badge */}
-      <div className="profile-credits-badge-fp">
-        <Zap size={12} />
-        <span>{credits.credits}/{credits.maxCredits}</span>
-        {credits.plan === 'pro' && (
-          <span className="pro-label-fp">
-            {credits.billingPeriod === 'yearly' ? 'PRO YEARLY' : 'PRO MONTHLY'}
-          </span>
-        )}
-      </div>
-      
-      {/* Expiration Date */}
-      {credits.nextResetDate && (
-        <div className="expiration-info-fp">
-          <Clock size={10} />
-          <span>
-            {credits.plan === 'pro' 
-              ? `Renews ${formatDate(credits.nextResetDate)}`
-              : `Resets ${formatDate(credits.nextResetDate)}`
-            }
-          </span>
+            <div className="profile-name-fp">{user.displayName || 'User'}</div>
+            <div className="profile-email-fp">{user.email}</div>
+            {credits && (
+              <>
+                <div className="profile-credits-badge-fp">
+                  <Zap size={12} />
+                  <span>{credits.credits}/{credits.maxCredits}</span>
+                  {credits.plan === 'pro' && (
+                    <span className="pro-label-fp">
+                      {credits.billingPeriod === 'yearly' ? 'PRO YEARLY' : 'PRO MONTHLY'}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Expiration Date Display */}
+                {credits.nextResetDate && (
+                  <div className="expiration-info-fp">
+                    <Clock size={10} />
+                    <span>
+                      {credits.plan === 'pro' 
+                        ? `Renews ${formatDate(credits.nextResetDate)}`
+                        : `Resets ${formatDate(credits.nextResetDate)}`
+                      }
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      )}
-    </>
-  )}
-</div>
-        </div> {/* Closes profile-header-fp */}
 
         {/* Quick Actions */}
         <div className="quick-actions-fp">
@@ -152,7 +179,12 @@ export const FloatingProfile: React.FC = () => {
             <span>Recent Projects</span>
           </div>
           <div className="history-items-fp">
-            {history.length === 0 ? (
+            {loadingHistory ? (
+              <div className="history-loading-fp">
+                <div className="spinner-fp"></div>
+                <p>Loading projects...</p>
+              </div>
+            ) : history.length === 0 ? (
               <div className="history-empty-fp">
                 <p>No projects yet</p>
                 <button 
@@ -163,9 +195,9 @@ export const FloatingProfile: React.FC = () => {
                 </button>
               </div>
             ) : (
-              history.slice(0, 5).map((project, idx) => (
+              history.map((project, idx) => (
                 <div
-                  key={idx}
+                  key={project.id}
                   className="history-item-fp"
                   onClick={() => { 
                     navigate(`/builder?project=${project.id}`); 
@@ -446,6 +478,33 @@ export const FloatingProfile: React.FC = () => {
           display: flex;
           flex-direction: column;
           gap: 4px;
+        }
+
+        .history-loading-fp {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100px;
+          gap: 12px;
+          color: #6b7280;
+        }
+
+        .spinner-fp {
+          width: 24px;
+          height: 24px;
+          border: 3px solid #e5e7eb;
+          border-top-color: #3b82f6;
+          border-radius: 50%;
+          animation: spin-fp 0.8s linear infinite;
+        }
+
+        @keyframes spin-fp {
+          to { transform: rotate(360deg); }
+        }
+
+        .history-loading-fp p {
+          font-size: 12px;
         }
 
         .history-empty-fp {

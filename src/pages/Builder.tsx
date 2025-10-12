@@ -1,4 +1,4 @@
-// src/pages/Builder.tsx - COMPLETE WITH PROJECT HISTORY AUTO-SAVE
+// src/pages/Builder.tsx - FINAL VERSION WITH FIRESTORE
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight, X, Minimize2, Maximize2,
   Zap, TrendingUp, AlertTriangle
 } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/FirebaseClient';
 import { FloatingProfile } from '../components/FloatingProfile';
 import { generateExtensionCode, GeneratedFile, Message, validateExtension } from './../../src/methods/services/aiService';
@@ -145,37 +145,43 @@ export default function Builder() {
     }
   }, [user, initialPrompt, hasProcessedInitialPrompt, creditsLoaded]);
 
-  // Load project from history
+  // Load project from Firestore
   useEffect(() => {
-    const projectParam = searchParams.get('project');
-    if (projectParam && user) {
+    const loadProject = async () => {
+      const projectParam = searchParams.get('project');
+      if (!projectParam || !user) return;
+
       try {
-        const history = localStorage.getItem('projectHistory');
-        if (history) {
-          const projects = JSON.parse(history);
-          const project = projects.find((p: any) => p.id === projectParam);
+        const projectRef = doc(db, 'users', user.uid, 'projects', projectParam);
+        const projectSnap = await getDoc(projectRef);
+
+        if (projectSnap.exists()) {
+          const project = projectSnap.data();
+          console.log('📂 Loading project:', project.name);
           
-          if (project) {
-            console.log('📂 Loading project:', project.name);
-            setProjectName(project.name);
-            setProjectId(project.id);
-            setFiles(project.files);
-            if (project.files.length > 0) {
-              setSelectedFile(project.files[0]);
-            }
+          setProjectName(project.name);
+          setProjectId(project.id);
+          setFiles(project.files || []);
+          
+          if (project.files && project.files.length > 0) {
+            setSelectedFile(project.files[0]);
           }
+        } else {
+          console.warn('⚠️ Project not found');
         }
       } catch (error) {
         console.error('❌ Error loading project:', error);
       }
-    }
+    };
+
+    loadProject();
   }, [searchParams, user]);
 
   // Auto-save project when files change
   useEffect(() => {
     if (files.length > 0 && projectName && user) {
       const saveTimer = setTimeout(() => {
-        saveProjectToHistory(projectName, files);
+        saveProjectToFirestore(projectName, files);
       }, 2000);
 
       return () => clearTimeout(saveTimer);
@@ -218,35 +224,30 @@ export default function Builder() {
     return nextReset.toISOString();
   };
 
-  // Save project to history
-  const saveProjectToHistory = (name: string, projectFiles: GeneratedFile[]) => {
+  // Save project to Firestore (user-specific)
+  const saveProjectToFirestore = async (name: string, projectFiles: GeneratedFile[]) => {
     if (!user || projectFiles.length === 0) return;
 
     try {
-      const history = localStorage.getItem('projectHistory');
-      const existingHistory = history ? JSON.parse(history) : [];
-
-      const project = {
+      const projectData = {
         id: projectId || Date.now().toString(),
         name: name,
         lastModified: new Date().toISOString(),
-        files: projectFiles,
+        files: projectFiles.map(f => ({
+          name: f.name,
+          path: f.path,
+          content: f.content,
+          language: f.language
+        })),
         userId: user.uid,
-        firstPrompt: name
+        firstPrompt: name,
+        createdAt: projectId ? undefined : new Date().toISOString()
       };
 
-      const existingIndex = existingHistory.findIndex((p: any) => p.id === project.id);
-      
-      if (existingIndex >= 0) {
-        existingHistory[existingIndex] = project;
-      } else {
-        existingHistory.unshift(project);
-      }
+      const projectRef = doc(db, 'users', user.uid, 'projects', projectData.id);
+      await setDoc(projectRef, projectData, { merge: true });
 
-      const limitedHistory = existingHistory.slice(0, 20);
-      
-      localStorage.setItem('projectHistory', JSON.stringify(limitedHistory));
-      console.log('✅ Project saved to history:', project.name);
+      console.log('✅ Project saved to Firestore:', projectData.name);
     } catch (error) {
       console.error('❌ Error saving project:', error);
     }
@@ -360,7 +361,7 @@ export default function Builder() {
           }
           
           setTimeout(() => {
-            saveProjectToHistory(newProjectName, correctedFiles);
+            saveProjectToFirestore(newProjectName, correctedFiles);
           }, 1000);
         }
         
@@ -542,6 +543,9 @@ Generated on: ${new Date().toLocaleString()}
     <>
       <FloatingProfile />
       <div className="builder-container">
+        {/* Rest of your JSX stays exactly the same */}
+        {/* I'm keeping all your existing UI code unchanged */}
+        
         <header className="builder-header">
           <div className="header-left">
             <button onClick={() => navigate('/')} className="home-btn">
@@ -1051,7 +1055,6 @@ Generated on: ${new Date().toLocaleString()}
             to { transform: rotate(360deg); }
           }
 
-          /* FIXED: FloatingProfile won't hide files - add padding to builder-layout */
           .builder-layout {
             padding-bottom: 100px;
           }
