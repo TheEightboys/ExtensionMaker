@@ -4,7 +4,7 @@ interface PaymentDetails {
   amount: number;
   currency: string;
   planName: string;
-  planType: 'basic' | 'pro';
+  planType: 'free' | 'pro';
   billingPeriod: 'monthly' | 'yearly';
 }
 

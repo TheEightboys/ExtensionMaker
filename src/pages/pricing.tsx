@@ -5,52 +5,21 @@ import { createPayment } from './../../src/services/paymentservice';
 import { Check, Zap, Crown, Loader2, ArrowRight, Home } from 'lucide-react';
 import '../styles/Pricing.css';
 
+import { DEFAULT_PLAN, PRO_PLAN, PLAN_CREDITS, type PlanType } from '../types/plans';
+
 const plans = [
   {
-    name: 'Free',
+    ...DEFAULT_PLAN,
     type: 'free' as const,
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    prompts: 10,
-    features: [
-      '10 prompts per month',
-      'All browsers supported',
-      'Code export & download',
-      'Community support',
-      'Basic templates'
-    ]
+    prompts: PLAN_CREDITS.free,
   },
   {
-    name: 'Basic',
-    type: 'basic' as const,
-    monthlyPrice: 499,
-    yearlyPrice: 4999,
-    prompts: 100,
-    features: [
-      '100 prompts per month',
-      'Priority generation speed',
-      'All browser support',
-      'Email support',
-      'Advanced templates',
-      'Code export & download'
-    ]
-  },
-  {
-    name: 'Pro',
+    ...PRO_PLAN,
     type: 'pro' as const,
     monthlyPrice: 999,
     yearlyPrice: 9999,
-    prompts: 500,
+    prompts: PLAN_CREDITS.pro,
     popular: true,
-    features: [
-      '500 prompts per month',
-      'Fastest generation',
-      'Custom branding',
-      'Priority support 24/7',
-      'API access',
-      'Team collaboration',
-      'Advanced analytics'
-    ]
   }
 ];
 
@@ -76,13 +45,20 @@ export default function Pricing() {
     try {
       const amount = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
       
-      const paymentSession = await createPayment(user.uid, user.email!, {
+      // Store purchase details before payment
+      const purchaseDetails = {
         amount,
         currency: 'INR',
         planName: plan.name,
         planType: plan.type,
-        billingPeriod
-      });
+        billingPeriod,
+        credits: plan.prompts
+      };
+      
+      // Save to localStorage
+      localStorage.setItem('pendingPurchase', JSON.stringify(purchaseDetails));
+      
+      const paymentSession = await createPayment(user.uid, user.email!, purchaseDetails);
 
       window.location.href = paymentSession.url;
     } catch (error: any) {
