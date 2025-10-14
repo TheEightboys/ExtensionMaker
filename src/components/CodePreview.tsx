@@ -15,8 +15,11 @@ const BROWSER_LOGOS = {
   chrome: "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/chrome/chrome-original.svg",
   firefox: "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/firefox/firefox-original.svg",
   edge: "https://raw.githubusercontent.com/edent/SuperTinyIcons/master/images/svg/edge.svg",
-  safari: "https://raw.githubusercontent.com/edent/SuperTinyIcons/master/images/svg/safari.svg"
+  safari: "https://raw.githubusercontent.com/edent/SuperTinyIcons/master/images/svg/safari.svg",
+  opera: "https://raw.githubusercontent.com/edent/SuperTinyIcons/master/images/svg/opera.svg",
+  brave: "https://raw.githubusercontent.com/edent/SuperTinyIcons/master/images/svg/brave.svg"
 };
+
 
 type BrowserType = 'chrome' | 'firefox' | 'edge' | 'safari';
 
@@ -25,36 +28,51 @@ const BrowserSelectionModal: React.FC<{
   onSelect: (browser: BrowserType) => void;
   onClose: () => void;
 }> = ({ onSelect, onClose }) => {
-  const browsers = [
-    { 
-      type: 'chrome' as BrowserType, 
-      name: 'Chrome', 
-      subtitle: 'Works for Chrome, Brave, Opera, Vivaldi',
-      color: '#4285F4',
-      icon: '🎨'
-    },
-    { 
-      type: 'firefox' as BrowserType, 
-      name: 'Firefox', 
-      subtitle: 'Mozilla Firefox & Firefox Developer Edition',
-      color: '#FF6611',
-      icon: '🦊'
-    },
-    { 
-      type: 'edge' as BrowserType, 
-      name: 'Edge', 
-      subtitle: 'Chromium-based Edge Browser',
-      color: '#0078D7',
-      icon: '🌐'
-    },
-    { 
-      type: 'safari' as BrowserType, 
-      name: 'Safari', 
-      subtitle: 'macOS Safari (Requires Xcode)',
-      color: '#006CFF',
-      icon: '🧭'
-    }
-  ];
+ const browsers = [
+  { 
+    type: 'chrome' as BrowserType, 
+    name: 'Chrome', 
+    subtitle: 'Google Chrome Browser',
+    color: '#4285F4',
+    icon: '🎨'
+  },
+  { 
+    type: 'brave' as BrowserType, 
+    name: 'Brave', 
+    subtitle: 'Privacy-focused Chromium Browser',
+    color: '#FB542B',
+    icon: '🦁'
+  },
+  { 
+    type: 'opera' as BrowserType, 
+    name: 'Opera', 
+    subtitle: 'Opera & Opera GX Browser',
+    color: '#FF1B2D',
+    icon: '🎭'
+  },
+  { 
+    type: 'firefox' as BrowserType, 
+    name: 'Firefox', 
+    subtitle: 'Mozilla Firefox & Firefox Developer Edition',
+    color: '#FF6611',
+    icon: '🦊'
+  },
+  { 
+    type: 'edge' as BrowserType, 
+    name: 'Edge', 
+    subtitle: 'Chromium-based Edge Browser',
+    color: '#0078D7',
+    icon: '🌐'
+  },
+  { 
+    type: 'safari' as BrowserType, 
+    name: 'Safari', 
+    subtitle: 'macOS Safari (Requires Xcode)',
+    color: '#006CFF',
+    icon: '🧭'
+  }
+];
+
 
   return (
     <div className="browser-modal-overlay" onClick={onClose}>
@@ -112,6 +130,44 @@ const InstallationGuide: React.FC<{ browser: BrowserType }> = ({ browser }) => {
         'Check console for any errors'
       ]
     },
+    brave: {
+    title: 'Brave Browser',
+    subtitle: 'Privacy-focused Chromium Browser',
+    icon: '🦁',
+    color: '#FB542B',
+    steps: [
+      { text: 'Download and extract the extension files', highlight: 'Download button above' },
+      { text: 'Open Brave and navigate to', code: 'brave://extensions' },
+      { text: 'Toggle "Developer mode" in the top right corner' },
+      { text: 'Click "Load unpacked" button' },
+      { text: 'Select the extracted folder containing manifest.json' },
+      { text: 'Your extension is now installed in Brave! 🦁' }
+    ],
+    tips: [
+      'Brave is Chromium-based, so Chrome extensions work perfectly',
+      'Built-in ad blocker and privacy features',
+      'Same installation process as Chrome'
+    ]
+  },
+  opera: {
+    title: 'Opera Browser',
+    subtitle: 'Opera & Opera GX Browser',
+    icon: '🎭',
+    color: '#FF1B2D',
+    steps: [
+      { text: 'Download and extract the extension files', highlight: 'Download button above' },
+      { text: 'Open Opera and navigate to', code: 'opera://extensions' },
+      { text: 'Enable "Developer mode" (toggle top right)' },
+      { text: 'Click "Load unpacked extension" button' },
+      { text: 'Select your extension folder' },
+      { text: 'Extension is now active in Opera! 🎭' }
+    ],
+    tips: [
+      'Opera is Chromium-based with extra features',
+      'Works with both Opera and Opera GX',
+      'Extensions can be installed from Chrome Web Store'
+    ]
+  },
     firefox: {
       title: 'Firefox Browser',
       subtitle: 'Mozilla Firefox & Firefox Developer Edition',
@@ -608,12 +664,15 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
     );
   }
 
-  const browserInfo = selectedBrowser ? {
-    chrome: { name: 'Chrome', icon: '🎨', color: '#4285F4' },
-    firefox: { name: 'Firefox', icon: '🦊', color: '#FF6611' },
-    edge: { name: 'Edge', icon: '🌐', color: '#0078D7' },
-    safari: { name: 'Safari', icon: '🧭', color: '#006CFF' }
-  }[selectedBrowser] : null;
+const browserInfo = selectedBrowser ? {
+  chrome: { name: 'Chrome', icon: '🎨', color: '#4285F4' },
+  brave: { name: 'Brave', icon: '🦁', color: '#FB542B' },
+  opera: { name: 'Opera', icon: '🎭', color: '#FF1B2D' },
+  firefox: { name: 'Firefox', icon: '🦊', color: '#FF6611' },
+  edge: { name: 'Edge', icon: '🌐', color: '#0078D7' },
+  safari: { name: 'Safari', icon: '🧭', color: '#006CFF' }
+}[selectedBrowser] : null;
+
 
   return (
     <>

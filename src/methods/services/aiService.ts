@@ -40,7 +40,7 @@ ${JSON.stringify(knowledgeBase, null, 2)}
 1. Create STUNNING UI with modern design (gradients, shadows, smooth animations)
 2. ALL buttons MUST work with proper event listeners
 3. Use chrome.storage.local for data persistence
-4. You can create ANY files needed: manifest.json, popup.html, popup.css, popup.js, background.js, content.js, options.html, etc.
+4. You can create ANY files needed: manifest.json, index.html, styles.css, script.js, background.js, content.js, options.html, etc.
 5. Add visual feedback (hover effects, loading states, animations)
 6. Make it responsive and professional
 7. Use modern CSS (flexbox, grid, transitions)
@@ -54,15 +54,15 @@ ${JSON.stringify(knowledgeBase, null, 2)}
 15. Each button should be well working and functional
 16. When updating, ONLY change what user requested, keep everything else intact
 
-=== FILE NAMING FLEXIBILITY ===
-You can create ANY of these files (or others as needed):
+=== STANDARD FILE NAMES (USE THESE) ===
 - manifest.json (REQUIRED)
-- popup.html, popup.css, popup.js (for popup UI)
+- index.html (main popup/page - NOT popup.html)
+- styles.css (main stylesheet - NOT popup.css)
+- script.js (main JavaScript - NOT popup.js)
 - background.js (for background service worker)
 - content.js (for content scripts on web pages)
 - options.html, options.css, options.js (for settings)
 - utils.js, storage.js, api.js (for utilities)
-- ANY other .js, .html, .css files needed!
 
 === TEMPLATE MATCHING ===
 - If user says "todo" or "task": Use todo_list template
@@ -83,7 +83,7 @@ EXPLANATION: [One sentence describing what was created/updated]
   "description": "Description here",
   "permissions": ["storage"],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "index.html",
     "default_icon": {
       "16": "icon16.png",
       "48": "icon48.png",
@@ -97,23 +97,23 @@ EXPLANATION: [One sentence describing what was created/updated]
   }
 }
 
-=== popup.html ===
+=== index.html ===
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Extension Title</title>
-  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
     <!-- content -->
   </div>
-  <script src="popup.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
 
-=== popup.css ===
+=== styles.css ===
 * {
   margin: 0;
   padding: 0;
@@ -129,7 +129,7 @@ body {
 
 /* More styles... */
 
-=== popup.js ===
+=== script.js ===
 document.addEventListener('DOMContentLoaded', function() {
   'use strict';
   console.log('Extension loaded');
@@ -148,6 +148,7 @@ chrome.runtime.onInstalled.addListener(() => {
 console.log('Content script loaded');
 
 CREATE ALL FILES NEEDED WITH COMPLETE WORKING CODE!`;
+
 
 // ============================================
 // HELPER FUNCTIONS
@@ -304,7 +305,7 @@ function tryAlternativeParsing(text: string): GeneratedFile[] {
   const htmlMatches = text.matchAll(/``````/g);
   let htmlIndex = 0;
   for (const match of htmlMatches) {
-    const filename = htmlIndex === 0 ? 'popup.html' : 
+    const filename = htmlIndex === 0 ? 'index.html' : 
                      htmlIndex === 1 ? 'options.html' : 
                      `page${htmlIndex}.html`;
     files.push({
@@ -320,7 +321,7 @@ function tryAlternativeParsing(text: string): GeneratedFile[] {
   const cssMatches = text.matchAll(/``````/g);
   let cssIndex = 0;
   for (const match of cssMatches) {
-    const filename = cssIndex === 0 ? 'popup.css' : 
+    const filename = cssIndex === 0 ? 'styles.css' : 
                      cssIndex === 1 ? 'options.css' : 
                      `style${cssIndex}.css`;
     files.push({
@@ -336,7 +337,7 @@ function tryAlternativeParsing(text: string): GeneratedFile[] {
   const jsMatches = text.matchAll(/``````/g);
   let jsIndex = 0;
   for (const match of jsMatches) {
-    const filename = jsIndex === 0 ? 'popup.js' : 
+    const filename = jsIndex === 0 ? 'script.js' : 
                      jsIndex === 1 ? 'background.js' : 
                      jsIndex === 2 ? 'content.js' :
                      `script${jsIndex}.js`;
@@ -530,9 +531,10 @@ export async function generateExtensionCode(
     finalFiles = updateManifestForFiles(finalFiles);
     
     // Smart sorting - manifest first, then html, css, js, then others
+       // Smart sorting - manifest first, then html, css, js, then others
     const order = [
       'manifest.json', 
-      'popup.html', 'popup.css', 'popup.js',
+      'index.html', 'styles.css', 'script.js',
       'background.js', 
       'content.js',
       'options.html', 'options.css', 'options.js'
@@ -546,6 +548,7 @@ export async function generateExtensionCode(
       if (bi === -1) return -1;
       return ai - bi;
     });
+
     
     console.log('✅ Final files:', finalFiles.map(f => `${f.name} (${f.content.length} chars)`));
     

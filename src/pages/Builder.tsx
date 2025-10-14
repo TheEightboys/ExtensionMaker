@@ -1,4 +1,4 @@
-// src/pages/Builder.tsx - FINAL VERSION WITH FIRESTORE
+// src/pages/Builder.tsx - COMPLETE FINAL VERSION WITH PRO EDITING
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -8,7 +8,7 @@ import {
   Send, Download, FileCode, Loader2, Copy, Check,
   Home, Eye, Code2, Sparkles, Split, User, Bot,
   ChevronLeft, ChevronRight, X, Minimize2, Maximize2,
-  Zap, TrendingUp, AlertTriangle
+  Zap, TrendingUp, AlertTriangle, Lock, Edit3, Save, Crown
 } from 'lucide-react';
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/FirebaseClient';
@@ -42,6 +42,11 @@ export default function Builder() {
   const [viewMode, setViewMode] = useState<'code' | 'split' | 'preview'>('split');
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
+
+  // Pro editing states
+  const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [editingFile, setEditingFile] = useState<GeneratedFile | null>(null);
+  const [editedCode, setEditedCode] = useState('');
 
   // Project history states
   const [projectName, setProjectName] = useState<string>('');
@@ -88,7 +93,8 @@ export default function Builder() {
             nextResetDate: data.nextResetDate || getNextResetDate(),
             createdAt: data.createdAt || new Date().toISOString(),
             updatedAt: data.updatedAt || new Date().toISOString(),
-            dailyPromptsUsed: data.dailyPromptsUsed || 0,
+            dailyCreditsUsed: data.dailyCreditsUsed || 0,
+            dailyLimit: data.dailyLimit || 5,
             lastDailyReset: data.lastDailyReset || new Date().toISOString(),
             monthlyCreditsUsed: data.monthlyCreditsUsed || 0,
             lastMonthlyReset: data.lastMonthlyReset || new Date().toISOString()
@@ -115,7 +121,8 @@ export default function Builder() {
             nextResetDate: getNextResetDate(),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            dailyPromptsUsed: 0,
+            dailyCreditsUsed: 0,
+            dailyLimit: 5,
             lastDailyReset: new Date().toISOString(),
             monthlyCreditsUsed: 0,
             lastMonthlyReset: new Date().toISOString()
@@ -224,7 +231,7 @@ export default function Builder() {
     return nextReset.toISOString();
   };
 
-  // Save project to Firestore (user-specific)
+  // Save project to Firestore
   const saveProjectToFirestore = async (name: string, projectFiles: GeneratedFile[]) => {
     if (!user || projectFiles.length === 0) return;
 
@@ -253,6 +260,38 @@ export default function Builder() {
     }
   };
 
+  // Pro editing functions
+  const handleOpenCodeEditor = (file: GeneratedFile) => {
+    if (credits?.plan !== 'pro') {
+      alert('⚠️ Code editing is a Pro feature!\n\nUpgrade to Pro to edit code and see live changes in the preview.');
+      navigate('/#pricing');
+      return;
+    }
+    
+    setEditingFile(file);
+    setEditedCode(file.content);
+    setShowCodeEditor(true);
+  };
+
+  const handleSaveEditedCode = () => {
+    if (!editingFile) return;
+    
+    const updatedFiles = files.map(f => 
+      f.name === editingFile.name 
+        ? { ...f, content: editedCode }
+        : f
+    );
+    
+    setFiles(updatedFiles);
+    
+    if (selectedFile?.name === editingFile.name) {
+      setSelectedFile({ ...editingFile, content: editedCode });
+    }
+    
+    setShowCodeEditor(false);
+    setEditingFile(null);
+  };
+
   const ensureCorrectLanguage = (file: GeneratedFile): GeneratedFile => {
     const filename = file.name.toLowerCase();
     let correctLanguage = 'plaintext';
@@ -279,7 +318,17 @@ export default function Builder() {
         const hasCredits = await hasCreditsAvailable(user.uid);
         
         if (!hasCredits) {
-          alert('⚠️ You have run out of prompts! Please upgrade your plan or wait for monthly reset.');
+          if (credits?.plan === 'free') {
+            const dailyUsed = credits.dailyCreditsUsed || 0;
+            const dailyLimit = credits.dailyLimit || 5;
+            
+            if (dailyUsed >= dailyLimit) {
+              alert('⏰ Daily Limit Reached!\n\nYou\'ve used all 5 daily prompts today. Come back tomorrow for more, or upgrade to Pro for unlimited prompts!');
+              return;
+            }
+          }
+          
+          alert('⚠️ You have run out of monthly prompts! Please upgrade your plan or wait for monthly reset.');
           navigate('/#pricing');
           return;
         }
@@ -348,7 +397,6 @@ export default function Builder() {
         const correctedFiles = result.files.map((file: any) => ensureCorrectLanguage(file));
         setFiles(correctedFiles);
         
-        // Auto-save project with first prompt as name
         if (!projectName && promptText) {
           const newProjectName = promptText.length > 50 
             ? promptText.substring(0, 50) + '...' 
@@ -499,6 +547,8 @@ Generated on: ${new Date().toLocaleString()}
   };
 
   const handleCodeChange = (value: string | undefined) => {
+    if (credits?.plan !== 'pro') return; // Prevent free users from editing
+    
     if (value !== undefined && selectedFile) {
       const updatedFiles = files.map(f => 
         f.name === selectedFile.name 
@@ -517,6 +567,86 @@ Generated on: ${new Date().toLocaleString()}
     f.content &&
     f.content.length > 0
   );
+
+  // Code Editor Modal Component
+  const CodeEditorModal = () => {
+    if (!showCodeEditor || !editingFile) return null;
+
+    return (
+      <div className="code-editor-modal-overlay" onClick={() => setShowCodeEditor(false)}>
+        <div className="code-editor-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="code-editor-header">
+            <div className="header-left">
+              <Edit3 size={20} />
+              <div>
+                <h3>Advanced Code Editor</h3>
+                <p>Editing: {editingFile.name}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowCodeEditor(false)} 
+              className="close-modal-btn"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          
+          <div className="code-editor-content">
+            <Editor
+              height="100%"
+              language={editingFile.language}
+              value={editedCode}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: true },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 2,
+                wordWrap: 'on',
+                readOnly: false,
+                formatOnPaste: true,
+                formatOnType: true,
+                quickSuggestions: true,
+                suggest: {
+                  enabled: true
+                }
+              }}
+              onChange={(value) => setEditedCode(value || '')}
+            />
+          </div>
+          
+          <div className="code-editor-footer">
+            <div className="footer-info">
+              <span className="pro-badge-small">
+                <Crown size={12} />
+                PRO FEATURE
+              </span>
+              <span className="file-info">
+                {editingFile.language.toUpperCase()} • {(editedCode.length / 1024).toFixed(1)} KB
+              </span>
+            </div>
+            <div className="footer-actions">
+              <button 
+                onClick={() => setShowCodeEditor(false)} 
+                className="cancel-btn"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveEditedCode} 
+                className="save-btn"
+              >
+                <Save size={16} />
+                Save & Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (!creditsLoaded) {
     return (
@@ -542,10 +672,9 @@ Generated on: ${new Date().toLocaleString()}
   return (
     <>
       <FloatingProfile />
+      <CodeEditorModal />
+      
       <div className="builder-container">
-        {/* Rest of your JSX stays exactly the same */}
-        {/* I'm keeping all your existing UI code unchanged */}
-        
         <header className="builder-header">
           <div className="header-left">
             <button onClick={() => navigate('/')} className="home-btn">
@@ -571,6 +700,11 @@ Generated on: ${new Date().toLocaleString()}
                       <span className="max">{credits.maxCredits}</span>
                     </div>
                     <span className="credits-label">prompts left</span>
+                    {credits.plan === 'free' && (
+                      <span className="daily-limit-label">
+                        {credits.dailyCreditsUsed || 0}/{credits.dailyLimit || 5} today
+                      </span>
+                    )}
                   </div>
                   {credits.plan === 'free' && daysUntilReset > 0 && (
                     <div className="reset-info">
@@ -583,7 +717,7 @@ Generated on: ${new Date().toLocaleString()}
                       className="upgrade-btn-compact"
                     >
                       <TrendingUp size={14} />
-                      Upgrade
+                      <span className="upgrade-text">Upgrade</span>
                     </button>
                   )}
                 </div>
@@ -617,7 +751,7 @@ Generated on: ${new Date().toLocaleString()}
                 </div>
                 <button onClick={handleDownload} className="action-btn primary">
                   <Download size={18} />
-                  Download
+                  <span className="download-text">Download</span>
                 </button>
               </>
             )}
@@ -636,6 +770,19 @@ Generated on: ${new Date().toLocaleString()}
             </button>
             <button onClick={() => setShowLowCreditsAlert(false)} className="alert-close-btn">
               ✕
+            </button>
+          </div>
+        )}
+
+        {credits && credits.plan === 'free' && credits.dailyCreditsUsed && credits.dailyCreditsUsed >= (credits.dailyLimit || 5) && (
+          <div className="daily-limit-alert">
+            <AlertTriangle size={20} className="alert-icon" />
+            <div className="alert-content">
+              <strong>Daily Limit Reached!</strong>
+              <p>You've used all {credits.dailyLimit || 5} prompts today. Come back tomorrow or upgrade to Pro!</p>
+            </div>
+            <button onClick={() => navigate('/#pricing')} className="alert-upgrade-btn">
+              Upgrade to Pro
             </button>
           </div>
         )}
@@ -786,12 +933,37 @@ Generated on: ${new Date().toLocaleString()}
                           <FileCode size={16} />
                           <span className="current-file">{selectedFile.name}</span>
                           <span className="file-lang">{selectedFile.language}</span>
+                          {credits?.plan === 'free' && (
+                            <span className="read-only-badge">
+                              <Lock size={12} />
+                              Read-Only
+                            </span>
+                          )}
+                          {credits?.plan === 'pro' && (
+                            <span className="pro-edit-badge">
+                              <Edit3 size={12} />
+                              Editable
+                            </span>
+                          )}
                         </div>
-                        <button onClick={handleCopy} className="copy-btn">
-                          {copied ? <Check size={16} /> : <Copy size={16} />}
-                          {copied ? 'Copied!' : 'Copy'}
-                        </button>
+                        <div className="toolbar-actions">
+                          {credits?.plan === 'pro' && (
+                            <button 
+                              onClick={() => handleOpenCodeEditor(selectedFile)} 
+                              className="edit-code-btn"
+                              title="Edit in Advanced Editor"
+                            >
+                              <Edit3 size={16} />
+                              <span>Advanced Edit</span>
+                            </button>
+                          )}
+                          <button onClick={handleCopy} className="copy-btn">
+                            {copied ? <Check size={16} /> : <Copy size={16} />}
+                            {copied ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
                       </div>
+
                       <Editor
                         height="100%"
                         language={selectedFile.language}
@@ -805,7 +977,7 @@ Generated on: ${new Date().toLocaleString()}
                           automaticLayout: true,
                           tabSize: 2,
                           wordWrap: 'on',
-                          readOnly: false,
+                          readOnly: credits?.plan === 'free',
                           formatOnPaste: true,
                           formatOnType: true
                         }}
@@ -863,6 +1035,8 @@ Generated on: ${new Date().toLocaleString()}
         </div>
 
         <style>{`
+          /* COMPLETE RESPONSIVE STYLES */
+          
           .credits-container-header {
             margin-right: 1rem;
           }
@@ -891,11 +1065,6 @@ Generated on: ${new Date().toLocaleString()}
 
           .credits-badge.free {
             background: linear-gradient(135deg, #6b7280, #4b5563);
-            color: white;
-          }
-
-          .credits-badge.basic {
-            background: linear-gradient(135deg, #ec4899, #be185d);
             color: white;
           }
 
@@ -946,6 +1115,13 @@ Generated on: ${new Date().toLocaleString()}
             color: #6b7280;
           }
 
+          .daily-limit-label {
+            font-size: 10px;
+            color: #f59e0b;
+            font-weight: 700;
+            margin-top: 2px;
+          }
+
           .reset-info {
             font-size: 10px;
             color: #6b7280;
@@ -969,6 +1145,225 @@ Generated on: ${new Date().toLocaleString()}
           .upgrade-btn-compact:hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+          }
+
+          /* Read-Only Badge */
+          .read-only-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: #fbbf24;
+            color: #000;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+          }
+
+          /* Pro Edit Badge */
+          .pro-edit-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            animation: shimmer 2s infinite;
+          }
+
+          @keyframes shimmer {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+          }
+
+          /* Toolbar Actions */
+          .toolbar-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+          }
+
+          .edit-code-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+          }
+
+          .edit-code-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+          }
+
+          /* Code Editor Modal */
+          .code-editor-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+          }
+
+          .code-editor-modal {
+            width: 100%;
+            max-width: 1200px;
+            height: 90vh;
+            background: #1e1e1e;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+          }
+
+          .code-editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            background: #252526;
+            border-bottom: 1px solid #3e3e42;
+          }
+
+          .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: white;
+          }
+
+          .header-left h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+          }
+
+          .header-left p {
+            margin: 0;
+            font-size: 13px;
+            color: #8b8b8b;
+          }
+
+          .close-modal-btn {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #3e3e42;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+
+          .close-modal-btn:hover {
+            background: #505050;
+          }
+
+          .code-editor-content {
+            flex: 1;
+            overflow: hidden;
+          }
+
+          .code-editor-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: #252526;
+            border-top: 1px solid #3e3e42;
+          }
+
+          .footer-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .pro-badge-small {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            color: #000;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+          }
+
+          .file-info {
+            font-size: 12px;
+            color: #8b8b8b;
+            font-weight: 600;
+          }
+
+          .footer-actions {
+            display: flex;
+            gap: 10px;
+          }
+
+          .cancel-btn,
+          .save-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+
+          .cancel-btn {
+            background: #3e3e42;
+            color: white;
+          }
+
+          .cancel-btn:hover {
+            background: #505050;
+          }
+
+          .save-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+          }
+
+          .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+          }
+
+          /* Daily Limit Alert */
+          .daily-limit-alert {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-bottom: 2px solid #f59e0b;
           }
 
           .low-credits-alert {
@@ -1012,6 +1407,7 @@ Generated on: ${new Date().toLocaleString()}
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
+            white-space: nowrap;
           }
 
           .alert-upgrade-btn:hover {
@@ -1059,22 +1455,146 @@ Generated on: ${new Date().toLocaleString()}
             padding-bottom: 100px;
           }
 
-          @media (max-width: 768px) {
+          /* RESPONSIVE STYLES */
+          @media (max-width: 1024px) {
             .credits-card-header {
               padding: 6px 12px;
+              gap: 10px;
+            }
+
+            .credits-number .current {
+              font-size: 18px;
+            }
+          }
+
+          @media (max-width: 768px) {
+            .credits-container-header {
+              margin-right: 0.5rem;
+            }
+
+            .credits-card-header {
+              padding: 6px 10px;
               gap: 8px;
+            }
+
+            .credits-badge {
+              padding: 3px 8px;
+              font-size: 10px;
             }
 
             .credits-number .current {
               font-size: 16px;
             }
 
+            .credits-number .separator,
+            .credits-number .max {
+              font-size: 12px;
+            }
+
+            .credits-label,
+            .daily-limit-label {
+              font-size: 10px;
+            }
+
             .reset-info {
+              display: none;
+            }
+
+            .upgrade-btn-compact {
+              padding: 5px 10px;
+              font-size: 11px;
+            }
+
+            .upgrade-text {
               display: none;
             }
 
             .builder-layout {
               padding-bottom: 80px;
+            }
+
+            .header-actions {
+              flex-wrap: wrap;
+              gap: 8px;
+            }
+
+            .view-mode-switcher {
+              order: 3;
+            }
+
+            .action-btn.primary {
+              padding: 8px 12px;
+            }
+
+            .download-text {
+              display: none;
+            }
+
+            .edit-code-btn span {
+              display: none;
+            }
+
+            .code-editor-modal {
+              height: 95vh;
+              border-radius: 12px;
+            }
+
+            .code-editor-header {
+              padding: 16px;
+            }
+
+            .header-left h3 {
+              font-size: 16px;
+            }
+
+            .code-editor-footer {
+              padding: 12px 16px;
+              flex-direction: column;
+              gap: 12px;
+            }
+
+            .footer-actions {
+              width: 100%;
+            }
+
+            .cancel-btn,
+            .save-btn {
+              flex: 1;
+            }
+
+            .alert-content strong {
+              font-size: 13px;
+            }
+
+            .alert-content p {
+              font-size: 11px;
+            }
+
+            .alert-upgrade-btn {
+              padding: 5px 12px;
+              font-size: 12px;
+            }
+          }
+
+          @media (max-width: 480px) {
+            .credits-card-header {
+              flex-wrap: wrap;
+            }
+
+            .daily-limit-alert,
+            .low-credits-alert {
+              flex-wrap: wrap;
+              padding: 10px 12px;
+            }
+
+            .alert-icon {
+              width: 100%;
+              text-align: center;
+              margin-bottom: 8px;
+            }
+
+            .alert-upgrade-btn {
+              width: 100%;
             }
           }
         `}</style>

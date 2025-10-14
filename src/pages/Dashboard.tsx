@@ -1,26 +1,80 @@
-// src/pages/Dashboard.tsx - COMPLETE FIXED VERSION
+// src/pages/Dashboard.tsx - COMPLETE WITH CORRECT DAILY PROMPTS
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { auth } from '../lib/FirebaseClient';
-import { useUserData } from '../hooks/useUserData';
+import { auth, db } from '../lib/FirebaseClient';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { 
   CheckCircle, User, Mail, Calendar, CreditCard, LogOut, 
-  Settings, Zap, TrendingUp, Crown, Sparkles 
+  Settings, Zap, TrendingUp, Crown, Sparkles, AlertTriangle 
 } from 'lucide-react';
+
+interface UserData {
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  plan: 'free' | 'pro';
+  credits: number;
+  maxCredits: number;
+  billingPeriod?: 'monthly' | 'yearly';
+  paymentAmount?: number;
+  nextResetDate?: string;
+  dailyCreditsUsed?: number;
+  dailyLimit?: number;
+  lastDailyResetDate?: string;
+  createdAt?: string;
+  lastLogin?: string;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { userData, loading } = useUserData();
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSuccess(false), 3000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Real-time listener for user data
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    const userRef = doc(db, 'userCredits', user.uid);
+    const unsubscribe = onSnapshot(userRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setUserData({
+          email: data.email || user.email || '',
+          displayName: data.displayName || user.displayName || '',
+          photoURL: data.photoURL || user.photoURL || '',
+          plan: data.plan || 'free',
+          credits: data.creditsRemaining || data.credits || 30,
+          maxCredits: data.maxCredits || data.totalCredits || 30,
+          billingPeriod: data.billingPeriod || 'monthly',
+          paymentAmount: data.paymentAmount,
+          nextResetDate: data.nextResetDate,
+          dailyCreditsUsed: data.dailyCreditsUsed || 0,
+          dailyLimit: data.dailyLimit || 5,
+          lastDailyResetDate: data.lastDailyResetDate,
+          createdAt: data.createdAt,
+          lastLogin: data.lastLogin
+        });
+        setLoading(false);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, navigate]);
 
   const handleLogout = async () => {
     try {
@@ -53,6 +107,8 @@ export default function Dashboard() {
 
   const isPro = userData.plan === 'pro';
   const creditsPercentage = userData.maxCredits > 0 ? (userData.credits / userData.maxCredits) * 100 : 0;
+  const dailyUsedPercentage = userData.dailyLimit ? (userData.dailyCreditsUsed! / userData.dailyLimit) * 100 : 0;
+  const dailyRemaining = Math.max(0, (userData.dailyLimit || 5) - (userData.dailyCreditsUsed || 0));
 
   if (!user) {
     navigate('/login');
@@ -72,9 +128,30 @@ export default function Dashboard() {
             <div>
               <h3 className="font-black text-green-900 text-lg">Welcome Back!</h3>
               <p className="text-sm text-green-700 font-medium">
-                {isPro ? 'Your Pro subscription is active 🎉' : 'Ready to build amazing extensions'}
+                {isPro ? 'Your Pro subscription is active 🎉' : `You have ${dailyRemaining} daily prompts remaining today`}
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Daily Limit Warning for Free Users */}
+        {!isPro && dailyRemaining === 0 && (
+          <div className="mb-6 bg-gradient-to-r from-orange-50 to-yellow-50 border-2 border-orange-300 rounded-2xl p-5 flex items-center gap-4 shadow-xl">
+            <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-black text-orange-900 text-lg">Daily Limit Reached</h3>
+              <p className="text-sm text-orange-700 font-medium">
+                You've used all 5 daily prompts. Come back tomorrow or upgrade to Pro!
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/#pricing')}
+              className="px-4 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600 transition"
+            >
+              Upgrade
+            </button>
           </div>
         )}
 
@@ -117,7 +194,7 @@ export default function Dashboard() {
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
                   <h3 className="text-3xl font-black text-gray-900">
-                    {user.displayName || 'User'}
+                    {userData.displayName || user.displayName || 'User'}
                   </h3>
                   {isPro && (
                     <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-xs font-black rounded-full flex items-center gap-1 shadow-lg">
@@ -129,12 +206,12 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3 text-gray-600">
                     <Mail className="w-5 h-5" />
-                    <span className="text-sm font-medium">{user.email}</span>
+                    <span className="text-sm font-medium">{userData.email || user.email}</span>
                   </div>
                   <div className="flex items-center gap-3 text-gray-600">
                     <Calendar className="w-5 h-5" />
                     <span className="text-sm font-medium">
-                      Member since {new Date(user.metadata.creationTime!).toLocaleDateString()}
+                      Member since {formatDate(userData.createdAt || user.metadata.creationTime!)}
                     </span>
                   </div>
                   {user.emailVerified && (
@@ -204,7 +281,7 @@ export default function Dashboard() {
                     <span className="text-sm font-medium">
                       {isPro 
                         ? `${userData.maxCredits} credits/month` 
-                        : `${userData.dailyPromptsUsed || 0}/5 prompts today (${userData.monthlyCreditsUsed || 0}/30 credits this month)`}
+                        : `${dailyRemaining} daily prompts remaining`}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -219,11 +296,11 @@ export default function Dashboard() {
                       {isPro ? 'Priority support' : 'Community support'}
                     </span>
                   </div>
-                  {isPro && userData.nextRenewalDate && (
+                  {isPro && userData.nextResetDate && (
                     <div className="flex items-center gap-3 pt-3 border-t border-white/20">
                       <Calendar className="w-5 h-5 flex-shrink-0" />
                       <span className="text-xs font-semibold">
-                        Renews on {formatDate(userData.nextRenewalDate)}
+                        Renews on {formatDate(userData.nextResetDate)}
                       </span>
                     </div>
                   )}
@@ -278,38 +355,47 @@ export default function Dashboard() {
 
               {!isPro && (
                 <>
-                  {/* Daily Prompts Progress */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-medium text-gray-600">Daily Prompts</span>
-                      <span className="text-sm font-bold text-gray-900">{userData.dailyPromptsUsed}/5</span>
+                  {/* Daily Prompts Progress - UPDATED */}
+                  <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-bold text-gray-900">Today's Prompts</span>
+                      <span className={`text-lg font-black ${dailyRemaining === 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                        {userData.dailyCreditsUsed}/{userData.dailyLimit}
+                      </span>
                     </div>
-                    <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="relative w-full h-2.5 bg-white rounded-full overflow-hidden shadow-inner">
                       <div
                         className={`absolute top-0 left-0 h-full transition-all duration-500 rounded-full ${
-                          userData.dailyPromptsUsed >= 5
-                            ? 'bg-red-500'
-                            : 'bg-blue-500'
+                          dailyRemaining === 0
+                            ? 'bg-gradient-to-r from-red-500 to-pink-500'
+                            : dailyUsedPercentage > 60
+                            ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
+                            : 'bg-gradient-to-r from-blue-500 to-indigo-500'
                         }`}
-                        style={{ width: `${(userData.dailyPromptsUsed / 5) * 100}%` }}
+                        style={{ width: `${dailyUsedPercentage}%` }}
                       />
                     </div>
+                    <p className="text-xs text-gray-600 font-semibold mt-2">
+                      {dailyRemaining > 0 
+                        ? `${dailyRemaining} prompts remaining today` 
+                        : 'Daily limit reached • Resets tomorrow'}
+                    </p>
                   </div>
 
                   {/* Monthly Credits Progress */}
                   <div className="mb-4">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-sm font-medium text-gray-600">Monthly Credits</span>
-                      <span className="text-sm font-bold text-gray-900">{userData.monthlyCreditsUsed}/30</span>
+                      <span className="text-sm font-bold text-gray-900">{userData.credits}/{userData.maxCredits}</span>
                     </div>
                     <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className={`absolute top-0 left-0 h-full transition-all duration-500 rounded-full ${
-                          userData.monthlyCreditsUsed >= 30
+                          userData.credits === 0
                             ? 'bg-red-500'
                             : 'bg-green-500'
                         }`}
-                        style={{ width: `${(userData.monthlyCreditsUsed / 30) * 100}%` }}
+                        style={{ width: `${creditsPercentage}%` }}
                       />
                     </div>
                   </div>
@@ -322,13 +408,13 @@ export default function Dashboard() {
                   : 'No credits remaining. Upgrade or wait for monthly reset.'}
               </p>
 
-              {isPro && (
+              {!isPro && (
                 <button
                   onClick={() => navigate('/#pricing')}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-bold hover:shadow-lg transition"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-bold hover:shadow-lg transition hover:scale-105"
                 >
                   <TrendingUp className="w-4 h-4" />
-                  Get More Credits
+                  Upgrade to Pro
                 </button>
               )}
             </div>

@@ -1,4 +1,5 @@
-// src/methods/services/CreditService.ts - WITH DAILY LIMITS
+// src/methods/services/CreditService.ts - FINAL VERSION WITH USER INFO
+
 import { db } from '../../lib/FirebaseClient';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 
@@ -18,6 +19,69 @@ export interface UserCredits {
   dailyCreditsUsed?: number;
   lastDailyResetDate?: string;
   dailyLimit?: number;
+  
+  // User info fields - NEW
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  lastLogin?: string;
+}
+
+// Initialize user credits with email/name - NEW FUNCTION
+export async function initializeUserCredits(
+  userId: string, 
+  email: string,
+  displayName?: string,
+  photoURL?: string
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'userCredits', userId);
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      // Create new user with credits
+      const now = new Date();
+      const defaultCredits: UserCredits = {
+        plan: 'free',
+        credits: 30,
+        maxCredits: 30,
+        billingPeriod: 'monthly',
+        lastResetDate: now.toISOString(),
+        nextResetDate: getNextResetDate(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        dailyCreditsUsed: 0,
+        lastDailyResetDate: getTodayDate(),
+        dailyLimit: 5,
+        // User info
+        email: email,
+        displayName: displayName || email.split('@')[0],
+        photoURL: photoURL || null,
+        lastLogin: now.toISOString()
+      };
+      
+      await setDoc(userRef, {
+        ...defaultCredits,
+        creditsRemaining: 30,
+        totalCredits: 30
+      });
+      
+      console.log('✅ User credits initialized for:', email);
+    } else {
+      // Update existing user's login time and info
+      await updateDoc(userRef, {
+        lastLogin: new Date().toISOString(),
+        email: email, // Update in case it changed
+        displayName: displayName || email.split('@')[0],
+        photoURL: photoURL || null,
+        updatedAt: new Date().toISOString()
+      });
+      console.log('✅ User info updated for:', email);
+    }
+  } catch (error) {
+    console.error('❌ Error initializing user credits:', error);
+    throw error;
+  }
 }
 
 export async function getUserCredits(userId: string): Promise<UserCredits | null> {
@@ -81,7 +145,12 @@ export async function getUserCredits(userId: string): Promise<UserCredits | null
       paymentAmount: data.paymentAmount,
       dailyCreditsUsed: needsDailyReset ? 0 : (data.dailyCreditsUsed || 0),
       lastDailyResetDate: today,
-      dailyLimit: userPlan === 'free' ? 5 : 999999 // Free: 5/day, Pro: unlimited
+      dailyLimit: userPlan === 'free' ? 5 : 999999,
+      // User info
+      email: data.email,
+      displayName: data.displayName,
+      photoURL: data.photoURL,
+      lastLogin: data.lastLogin
     };
   } catch (error) {
     console.error('[CREDITS] Error:', error);
@@ -151,7 +220,7 @@ export async function useCredit(userId: string): Promise<boolean> {
 // Get today's date as YYYY-MM-DD
 function getTodayDate(): string {
   const today = new Date();
-  return today.toISOString().split('T')[0]; // Returns "2025-10-12"
+  return today.toISOString().split('T')[0]; // Returns "2025-10-14"
 }
 
 function getNextResetDate(): string {
@@ -194,6 +263,7 @@ export async function resetCredits(userId: string): Promise<boolean> {
     return false;
   }
 }
+
 export function formatResetDate(nextResetDate: string): string {
   const date = new Date(nextResetDate);
   const now = new Date();
