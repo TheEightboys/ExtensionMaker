@@ -28,50 +28,50 @@ const BrowserSelectionModal: React.FC<{
   onSelect: (browser: BrowserType) => void;
   onClose: () => void;
 }> = ({ onSelect, onClose }) => {
- const browsers = [
-  { 
-    type: 'chrome' as BrowserType, 
-    name: 'Chrome', 
-    subtitle: 'Google Chrome Browser',
-    color: '#4285F4',
-    icon: '🎨'
-  },
-  { 
-    type: 'brave' as BrowserType, 
-    name: 'Brave', 
-    subtitle: 'Privacy-focused Chromium Browser',
-    color: '#FB542B',
-    icon: '🦁'
-  },
-  { 
-    type: 'opera' as BrowserType, 
-    name: 'Opera', 
-    subtitle: 'Opera & Opera GX Browser',
-    color: '#FF1B2D',
-    icon: '🎭'
-  },
-  { 
-    type: 'firefox' as BrowserType, 
-    name: 'Firefox', 
-    subtitle: 'Mozilla Firefox & Firefox Developer Edition',
-    color: '#FF6611',
-    icon: '🦊'
-  },
-  { 
-    type: 'edge' as BrowserType, 
-    name: 'Edge', 
-    subtitle: 'Chromium-based Edge Browser',
-    color: '#0078D7',
-    icon: '🌐'
-  },
-  { 
-    type: 'safari' as BrowserType, 
-    name: 'Safari', 
-    subtitle: 'macOS Safari (Requires Xcode)',
-    color: '#006CFF',
-    icon: '🧭'
-  }
-];
+  const browsers = [
+    {
+      type: 'chrome' as BrowserType,
+      name: 'Chrome',
+      subtitle: 'Google Chrome Browser',
+      color: '#4285F4',
+      icon: '🎨'
+    },
+    {
+      type: 'brave' as BrowserType,
+      name: 'Brave',
+      subtitle: 'Privacy-focused Chromium Browser',
+      color: '#FB542B',
+      icon: '🦁'
+    },
+    {
+      type: 'opera' as BrowserType,
+      name: 'Opera',
+      subtitle: 'Opera & Opera GX Browser',
+      color: '#FF1B2D',
+      icon: '🎭'
+    },
+    {
+      type: 'firefox' as BrowserType,
+      name: 'Firefox',
+      subtitle: 'Mozilla Firefox & Firefox Developer Edition',
+      color: '#FF6611',
+      icon: '🦊'
+    },
+    {
+      type: 'edge' as BrowserType,
+      name: 'Edge',
+      subtitle: 'Chromium-based Edge Browser',
+      color: '#0078D7',
+      icon: '🌐'
+    },
+    {
+      type: 'safari' as BrowserType,
+      name: 'Safari',
+      subtitle: 'macOS Safari (Requires Xcode)',
+      color: '#006CFF',
+      icon: '🧭'
+    }
+  ];
 
 
   return (
@@ -81,7 +81,7 @@ const BrowserSelectionModal: React.FC<{
           <h2>Select Your Browser</h2>
           <p>Choose the browser you want to preview your extension in</p>
         </div>
-        
+
         <div className="browser-grid">
           {browsers.map((browser) => (
             <button
@@ -131,43 +131,43 @@ const InstallationGuide: React.FC<{ browser: BrowserType }> = ({ browser }) => {
       ]
     },
     brave: {
-    title: 'Brave Browser',
-    subtitle: 'Privacy-focused Chromium Browser',
-    icon: '🦁',
-    color: '#FB542B',
-    steps: [
-      { text: 'Download and extract the extension files', highlight: 'Download button above' },
-      { text: 'Open Brave and navigate to', code: 'brave://extensions' },
-      { text: 'Toggle "Developer mode" in the top right corner' },
-      { text: 'Click "Load unpacked" button' },
-      { text: 'Select the extracted folder containing manifest.json' },
-      { text: 'Your extension is now installed in Brave! 🦁' }
-    ],
-    tips: [
-      'Brave is Chromium-based, so Chrome extensions work perfectly',
-      'Built-in ad blocker and privacy features',
-      'Same installation process as Chrome'
-    ]
-  },
-  opera: {
-    title: 'Opera Browser',
-    subtitle: 'Opera & Opera GX Browser',
-    icon: '🎭',
-    color: '#FF1B2D',
-    steps: [
-      { text: 'Download and extract the extension files', highlight: 'Download button above' },
-      { text: 'Open Opera and navigate to', code: 'opera://extensions' },
-      { text: 'Enable "Developer mode" (toggle top right)' },
-      { text: 'Click "Load unpacked extension" button' },
-      { text: 'Select your extension folder' },
-      { text: 'Extension is now active in Opera! 🎭' }
-    ],
-    tips: [
-      'Opera is Chromium-based with extra features',
-      'Works with both Opera and Opera GX',
-      'Extensions can be installed from Chrome Web Store'
-    ]
-  },
+      title: 'Brave Browser',
+      subtitle: 'Privacy-focused Chromium Browser',
+      icon: '🦁',
+      color: '#FB542B',
+      steps: [
+        { text: 'Download and extract the extension files', highlight: 'Download button above' },
+        { text: 'Open Brave and navigate to', code: 'brave://extensions' },
+        { text: 'Toggle "Developer mode" in the top right corner' },
+        { text: 'Click "Load unpacked" button' },
+        { text: 'Select the extracted folder containing manifest.json' },
+        { text: 'Your extension is now installed in Brave! 🦁' }
+      ],
+      tips: [
+        'Brave is Chromium-based, so Chrome extensions work perfectly',
+        'Built-in ad blocker and privacy features',
+        'Same installation process as Chrome'
+      ]
+    },
+    opera: {
+      title: 'Opera Browser',
+      subtitle: 'Opera & Opera GX Browser',
+      icon: '🎭',
+      color: '#FF1B2D',
+      steps: [
+        { text: 'Download and extract the extension files', highlight: 'Download button above' },
+        { text: 'Open Opera and navigate to', code: 'opera://extensions' },
+        { text: 'Enable "Developer mode" (toggle top right)' },
+        { text: 'Click "Load unpacked extension" button' },
+        { text: 'Select your extension folder' },
+        { text: 'Extension is now active in Opera! 🎭' }
+      ],
+      tips: [
+        'Opera is Chromium-based with extra features',
+        'Works with both Opera and Opera GX',
+        'Extensions can be installed from Chrome Web Store'
+      ]
+    },
     firefox: {
       title: 'Firefox Browser',
       subtitle: 'Mozilla Firefox & Firefox Developer Edition',
@@ -263,7 +263,7 @@ const InstallationGuide: React.FC<{ browser: BrowserType }> = ({ browser }) => {
                   {step.code && (
                     <div className="code-block-wrapper">
                       <code className="step-code">{step.code}</code>
-                      <button 
+                      <button
                         onClick={() => copyCode(step.code!)}
                         className="copy-code-btn"
                         title="Copy code"
@@ -295,12 +295,12 @@ const InstallationGuide: React.FC<{ browser: BrowserType }> = ({ browser }) => {
         )}
 
         <div className="guide-links">
-          <a 
+          <a
             href={
-              browser === 'chrome' ? 'https://developer.chrome.com/docs/extensions/' : 
-              browser === 'firefox' ? 'https://extensionworkshop.com/' :
-              browser === 'edge' ? 'https://learn.microsoft.com/en-us/microsoft-edge/extensions-chromium/' :
-              'https://developer.apple.com/documentation/safariservices/safari_web_extensions'
+              browser === 'chrome' ? 'https://developer.chrome.com/docs/extensions/' :
+                browser === 'firefox' ? 'https://extensionworkshop.com/' :
+                  browser === 'edge' ? 'https://learn.microsoft.com/en-us/microsoft-edge/extensions-chromium/' :
+                    'https://developer.apple.com/documentation/safariservices/safari_web_extensions'
             }
             target="_blank"
             rel="noopener noreferrer"
@@ -369,7 +369,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  
+
   const { user } = useAuth();
   const navigate = useNavigate();
   const [credits, setCredits] = useState<any>(null);
@@ -381,7 +381,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
       if (user) {
         const userCredits = await getUserCredits(user.uid);
         setCredits(userCredits);
-        
+
         if (userCredits?.plan === 'free' && userCredits.credits <= 3) {
           setShowUpgradePrompt(true);
         }
@@ -421,9 +421,9 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
 
   const entryFile = useMemo(() => {
     return files.find(f => f.name === 'popup.html') ||
-           files.find(f => f.name === 'index.html') ||
-           files.find(f => f.name === 'options.html') ||
-           files.find(f => f.name.endsWith('.html'));
+      files.find(f => f.name === 'index.html') ||
+      files.find(f => f.name === 'options.html') ||
+      files.find(f => f.name.endsWith('.html'));
   }, [files]);
 
   const cssFiles = useMemo(() => {
@@ -445,14 +445,14 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
         html = html.replace(cssLinkPattern, `<style>${cssFile.content}</style>`);
       });
 
-      const linkedCssFiles = cssFiles.filter(cssFile => 
+      const linkedCssFiles = cssFiles.filter(cssFile =>
         html.includes(`href="${cssFile.name}"`) || html.includes(`href='${cssFile.name}'`)
       );
-      
-      const unlinkedCssFiles = cssFiles.filter(cssFile => 
+
+      const unlinkedCssFiles = cssFiles.filter(cssFile =>
         !linkedCssFiles.includes(cssFile)
       );
-      
+
       if (unlinkedCssFiles.length > 0) {
         const additionalStyles = unlinkedCssFiles.map(f => `<style>${f.content}</style>`).join('\n');
         html = html.replace(/<\/head>/i, `${additionalStyles}</head>`);
@@ -598,6 +598,21 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
         html = html.replace(jsPattern, `<script>${jsFile.content}</script>`);
       });
 
+      // Inject popup scripts (not background/content scripts)
+      const popupScripts = jsFiles.filter(f =>
+        !f.name.includes('background') && !f.name.includes('content')
+      );
+
+      // Simple script injection - let the original code run as-is
+      const injectedScripts = popupScripts.map(f =>
+        `<script>\n// File: ${f.name}\n${f.content}\n</script>`
+      ).join('\n');
+
+      if (html.includes('</body>')) {
+        html = html.replace(/<\/body>/i, `${injectedScripts}\n</body>`);
+      } else {
+        html += `\n${injectedScripts}`;
+      }
       const baseStyles = `<style>
         html,body{margin:0;padding:0;width:100%;height:100%;overflow-x:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;}
         *{box-sizing:border-box;}
@@ -664,21 +679,21 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
     );
   }
 
-const browserInfo = selectedBrowser ? {
-  chrome: { name: 'Chrome', icon: '🎨', color: '#4285F4' },
-  brave: { name: 'Brave', icon: '🦁', color: '#FB542B' },
-  opera: { name: 'Opera', icon: '🎭', color: '#FF1B2D' },
-  firefox: { name: 'Firefox', icon: '🦊', color: '#FF6611' },
-  edge: { name: 'Edge', icon: '🌐', color: '#0078D7' },
-  safari: { name: 'Safari', icon: '🧭', color: '#006CFF' }
-}[selectedBrowser] : null;
+  const browserInfo = selectedBrowser ? {
+    chrome: { name: 'Chrome', icon: '🎨', color: '#4285F4' },
+    brave: { name: 'Brave', icon: '🦁', color: '#FB542B' },
+    opera: { name: 'Opera', icon: '🎭', color: '#FF1B2D' },
+    firefox: { name: 'Firefox', icon: '🦊', color: '#FF6611' },
+    edge: { name: 'Edge', icon: '🌐', color: '#0078D7' },
+    safari: { name: 'Safari', icon: '🧭', color: '#006CFF' }
+  }[selectedBrowser] : null;
 
 
   return (
     <>
       {/* Browser Selection Modal */}
       {showBrowserModal && (
-        <BrowserSelectionModal 
+        <BrowserSelectionModal
           onSelect={handleBrowserSelection}
           onClose={() => setShowBrowserModal(false)}
         />
@@ -696,7 +711,7 @@ const browserInfo = selectedBrowser ? {
               <span className="credits-plan">({credits.plan} plan)</span>
             </div>
             {credits.plan === 'free' && credits.credits <= 3 && (
-              <button 
+              <button
                 onClick={() => navigate('/#pricing')}
                 className="credits-upgrade-btn"
               >
@@ -717,10 +732,10 @@ const browserInfo = selectedBrowser ? {
               </span>
             )}
           </div>
-          
+
           <div className="preview-toolbar">
             <div className="preview-actions-group">
-              <button 
+              <button
                 onClick={() => setShowBrowserModal(true)}
                 className="icon-btn browser-change-btn"
                 title="Change Browser"
@@ -729,16 +744,16 @@ const browserInfo = selectedBrowser ? {
                 {selectedBrowser && <img src={BROWSER_LOGOS[selectedBrowser]} alt="browser" className="browser-logo-small" />}
                 <span>Change</span>
               </button>
-              <button 
-                onClick={() => setShowGuide(!showGuide)} 
+              <button
+                onClick={() => setShowGuide(!showGuide)}
                 className={`icon-btn ${showGuide ? 'active' : ''}`}
                 title="Installation Guide"
                 type="button"
               >
                 <Info size={16} />
               </button>
-              <button 
-                onClick={handleRefresh} 
+              <button
+                onClick={handleRefresh}
                 className="icon-btn"
                 disabled={isRefreshing}
                 title="Refresh Preview"
@@ -746,8 +761,8 @@ const browserInfo = selectedBrowser ? {
               >
                 <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
               </button>
-              <button 
-                onClick={() => setIsFullscreen(true)} 
+              <button
+                onClick={() => setIsFullscreen(true)}
                 className="icon-btn"
                 title="Fullscreen Mode"
                 type="button"
@@ -801,7 +816,7 @@ const browserInfo = selectedBrowser ? {
                   <p>Loading preview...</p>
                 </div>
               )}
-              
+
               <div className="preview-info-bar">
                 <div className="info-item">
                   <FileCode size={14} />
@@ -833,7 +848,7 @@ const browserInfo = selectedBrowser ? {
                   </span>
                 )}
               </div>
-              
+
               <div className="fullscreen-toolbar">
                 <div className="fullscreen-actions">
                   <button onClick={handleRefresh} className="icon-btn" type="button" title="Refresh">

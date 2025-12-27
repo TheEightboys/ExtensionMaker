@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  User, Home, History, Settings, LogOut, 
+import {
+  Home, History, Settings, LogOut,
   Folder, Clock, Zap, Crown, Plus
 } from 'lucide-react';
 import { getUserCredits, UserCredits } from '../methods/services/CreditService';
@@ -17,12 +17,12 @@ const formatDate = (dateString: string): string => {
   const now = new Date();
   const diffTime = date.getTime() - now.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) return 'today';
   if (diffDays === 1) return 'tomorrow';
   if (diffDays < 7) return `in ${diffDays} days`;
   if (diffDays < 30) return `in ${Math.floor(diffDays / 7)} weeks`;
-  
+
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
@@ -45,7 +45,7 @@ export const FloatingProfile: React.FC = () => {
   useEffect(() => {
     const loadUserProjects = async () => {
       if (!user) return;
-      
+
       setLoadingHistory(true);
       try {
         const projectsRef = collection(db, 'users', user.uid, 'projects');
@@ -86,7 +86,7 @@ export const FloatingProfile: React.FC = () => {
   return (
     <>
       {/* Floating Circle Avatar */}
-      <div 
+      <div
         className="floating-profile-trigger"
         onMouseEnter={() => setIsOpen(true)}
         onClick={() => setIsOpen(!isOpen)}
@@ -106,7 +106,7 @@ export const FloatingProfile: React.FC = () => {
       </div>
 
       {/* Sidebar Panel */}
-      <div 
+      <div
         className={`floating-profile-panel ${isOpen ? 'open' : ''}`}
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
@@ -136,13 +136,13 @@ export const FloatingProfile: React.FC = () => {
                     </span>
                   )}
                 </div>
-                
+
                 {/* Expiration Date Display */}
                 {credits.nextResetDate && (
                   <div className="expiration-info-fp">
                     <Clock size={10} />
                     <span>
-                      {credits.plan === 'pro' 
+                      {credits.plan === 'pro'
                         ? `Renews ${formatDate(credits.nextResetDate)}`
                         : `Resets ${formatDate(credits.nextResetDate)}`
                       }
@@ -156,14 +156,14 @@ export const FloatingProfile: React.FC = () => {
 
         {/* Quick Actions */}
         <div className="quick-actions-fp">
-          <button 
+          <button
             onClick={() => { navigate('/dashboard'); setIsOpen(false); }}
             className="action-btn-fp"
           >
             <Home size={18} />
             <span>Dashboard</span>
           </button>
-          <button 
+          <button
             onClick={() => { navigate('/builder'); setIsOpen(false); }}
             className="action-btn-fp action-btn-primary-fp"
           >
@@ -187,7 +187,7 @@ export const FloatingProfile: React.FC = () => {
             ) : history.length === 0 ? (
               <div className="history-empty-fp">
                 <p>No projects yet</p>
-                <button 
+                <button
                   onClick={() => { navigate('/builder'); setIsOpen(false); }}
                   className="create-btn-small-fp"
                 >
@@ -195,12 +195,12 @@ export const FloatingProfile: React.FC = () => {
                 </button>
               </div>
             ) : (
-              history.map((project, idx) => (
+              history.map((project) => (
                 <div
                   key={project.id}
                   className="history-item-fp"
-                  onClick={() => { 
-                    navigate(`/builder?project=${project.id}`); 
+                  onClick={() => {
+                    navigate(`/builder?project=${project.id}`);
                     setIsOpen(false);
                   }}
                 >
@@ -220,14 +220,14 @@ export const FloatingProfile: React.FC = () => {
 
         {/* Bottom Actions */}
         <div className="bottom-actions-fp">
-          <button 
+          <button
             onClick={() => { navigate('/dashboard'); setIsOpen(false); }}
             className="bottom-btn-fp"
           >
             <Settings size={16} />
             <span>Settings</span>
           </button>
-          <button 
+          <button
             onClick={handleLogout}
             className="bottom-btn-fp logout-btn-fp"
           >
@@ -268,7 +268,7 @@ export const FloatingProfile: React.FC = () => {
           width: 100%;
           height: 100%;
           border-radius: 50%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -344,7 +344,7 @@ export const FloatingProfile: React.FC = () => {
         .avatar-placeholder-large-fp {
           width: 100%;
           height: 100%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -443,14 +443,14 @@ export const FloatingProfile: React.FC = () => {
         }
 
         .action-btn-primary-fp {
-          background: #3b82f6;
-          border-color: #3b82f6;
+          background: linear-gradient(135deg, #f97316, #ea580c);
+          border-color: #f97316;
           color: white;
         }
 
         .action-btn-primary-fp:hover {
-          background: #2563eb;
-          border-color: #2563eb;
+          background: linear-gradient(135deg, #ea580c, #dc2626);
+          border-color: #ea580c;
         }
 
         .history-section-fp {
@@ -494,7 +494,7 @@ export const FloatingProfile: React.FC = () => {
           width: 24px;
           height: 24px;
           border: 3px solid #e5e7eb;
-          border-top-color: #3b82f6;
+          border-top-color: #f97316;
           border-radius: 50%;
           animation: spin-fp 0.8s linear infinite;
         }
@@ -524,7 +524,7 @@ export const FloatingProfile: React.FC = () => {
 
         .create-btn-small-fp {
           padding: 8px 14px;
-          background: #3b82f6;
+          background: #f97316;
           color: white;
           border: none;
           border-radius: 8px;
@@ -535,7 +535,7 @@ export const FloatingProfile: React.FC = () => {
         }
 
         .create-btn-small-fp:hover {
-          background: #2563eb;
+          background: #ea580c;
         }
 
         .history-item-fp {

@@ -1,699 +1,479 @@
-// src/pages/SignUp.tsx - GUARANTEED USER INFO STORAGE
-
-import React, { useState } from 'react';
+// src/pages/SignUp.tsx - ULTRA CLEAN WITH ANIMATIONS
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, googleProvider, db } from '../lib/FirebaseClient';
-import { signInWithPopup, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, Mail, Lock, Chrome, ArrowLeft } from 'lucide-react';
+import { createUserWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth, db } from '../lib/FirebaseClient';
+import { doc, setDoc } from 'firebase/firestore';
+import { Mail, Lock, User, Loader2, Sparkles, Zap, Shield, Gift, ArrowRight, Eye, EyeOff, Code, Palette } from 'lucide-react';
+import gsap from 'gsap';
 
 export default function SignUp() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const saveUserToFirestore = async (userId: string, userEmail: string, displayName?: string, photoURL?: string) => {
-    try {
-      const userRef = doc(db, 'userCredits', userId);
-      const now = new Date();
-      const nextReset = new Date(now);
-      nextReset.setDate(nextReset.getDate() + 30);
-      
-      await setDoc(userRef, {
-        // User Info
-        email: userEmail,
-        displayName: displayName || userEmail.split('@')[0],
-        photoURL: photoURL || null,
-        
-        // Credits
-        plan: 'free',
-        credits: 30,
-        creditsRemaining: 30,
-        maxCredits: 30,
-        totalCredits: 30,
-        
-        // Daily Limits
-        dailyCreditsUsed: 0,
-        dailyLimit: 5,
-        lastDailyResetDate: now.toISOString().split('T')[0],
-        
-        // Dates
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        lastLogin: now.toISOString(),
-        lastResetDate: now.toISOString(),
-        nextResetDate: nextReset.toISOString(),
-        
-        // Billing
-        billingPeriod: 'monthly'
-      }, { merge: true });
-      
-      console.log('✅ User saved to Firestore:', userEmail);
-    } catch (error) {
-      console.error('❌ Error saving user:', error);
-    }
+  // Enhanced GSAP Animations
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Logo animation
+      gsap.from('.signup-logo', { scale: 0, rotation: -180, opacity: 0, duration: 0.8, ease: 'back.out(1.7)' });
+
+      // Title animation with split text effect
+      gsap.from('.signup-title', { y: 50, opacity: 0, duration: 0.8, delay: 0.3, ease: 'power3.out' });
+      gsap.from('.signup-subtitle', { y: 30, opacity: 0, duration: 0.6, delay: 0.5, ease: 'power3.out' });
+
+      // Form elements stagger
+      gsap.from('.form-group', { x: -40, opacity: 0, duration: 0.5, stagger: 0.1, delay: 0.6, ease: 'power3.out' });
+      gsap.from('.submit-btn', { scale: 0.9, opacity: 0, duration: 0.5, delay: 1, ease: 'back.out(1.7)' });
+      gsap.from('.social-btn', { y: 20, opacity: 0, duration: 0.5, delay: 1.2, ease: 'power3.out' });
+
+      // Feature badges
+      gsap.from('.feature-badge', { scale: 0, opacity: 0, duration: 0.4, stagger: 0.1, delay: 1.4, ease: 'back.out(2)' });
+
+      // Background orbs
+      gsap.to('.bg-orb-1', { y: -25, x: 20, duration: 4, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to('.bg-orb-2', { y: 20, x: -25, duration: 5, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to('.bg-orb-3', { y: -15, x: 15, duration: 6, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+    }, containerRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  const initializeUserCredits = async (userId: string, userEmail: string, userName: string) => {
+    const nextReset = new Date();
+    nextReset.setDate(nextReset.getDate() + 30);
+
+    await setDoc(doc(db, 'userCredits', userId), {
+      email: userEmail,
+      displayName: userName,
+      plan: 'free',
+      credits: 30,
+      creditsRemaining: 30,
+      maxCredits: 30,
+      totalCredits: 30,
+      dailyCreditsUsed: 0,
+      dailyLimit: 5,
+      lastDailyResetDate: new Date().toISOString().split('T')[0],
+      billingPeriod: 'monthly',
+      nextResetDate: nextReset.toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
   };
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      
-      await saveUserToFirestore(
-        user.uid,
-        user.email!,
-        user.displayName || undefined,
-        user.photoURL || undefined
-      );
-      
-      console.log('✅ Google sign up successful:', user.email);
-      navigate('/dashboard');
-    } catch (error: any) {
-      console.error('❌ Google sign up error:', error);
-      setError(error.message);
-      setLoading(false);
-    }
-  };
-
-  const handleEmailSignUp = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
-    setError(null);
-    
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      setLoading(false);
-      return;
-    }
 
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      const user = result.user;
-      
-      await saveUserToFirestore(
-        user.uid,
-        user.email!,
-        user.displayName || email.split('@')[0],
-        user.photoURL || undefined
-      );
-      
-      console.log('✅ Email sign up successful:', user.email);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName: name });
+      await initializeUserCredits(userCredential.user.uid, email, name);
       navigate('/dashboard');
-    } catch (error: any) {
-      console.error('❌ Sign up error:', error);
-      if (error.code === 'auth/email-already-in-use') {
-        setError('Email already in use. Try logging in instead.');
-      } else if (error.code === 'auth/weak-password') {
-        setError('Password is too weak. Use at least 6 characters.');
-      } else {
-        setError('Failed to create account. Please try again.');
-      }
+    } catch (err: any) {
+      setError(err.code === 'auth/email-already-in-use' ? 'Email already registered' : 'Failed to create account');
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    try {
+      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      await initializeUserCredits(result.user.uid, result.user.email || '', result.user.displayName || '');
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError('Google sign up failed');
     }
   };
 
   return (
-    <div className="auth-container">
-      <button onClick={() => navigate('/')} className="back-btn">
-        <ArrowLeft size={20} />
-        Back to Home
-      </button>
+    <div className="signup-page" ref={containerRef}>
+      {/* Animated Background */}
+      <div className="bg-orb bg-orb-1"></div>
+      <div className="bg-orb bg-orb-2"></div>
+      <div className="bg-orb bg-orb-3"></div>
+      <div className="bg-grid"></div>
 
-      <div className="auth-card">
-        <div className="auth-header">
-          <h1>Create Account</h1>
-          <p>Start building amazing extensions today</p>
-        </div>
+      <div className="signup-container">
+        {/* Logo */}
+        <Link to="/" className="signup-logo">
+          <Sparkles className="w-7 h-7" />
+          <span>ExtensionBuilder</span>
+        </Link>
 
-        {error && (
-          <div className="error-alert">
-            <span>⚠️</span>
-            {error}
-          </div>
-        )}
+        {/* Header */}
+        <h1 className="signup-title">Create Your Account</h1>
+        <p className="signup-subtitle">Start building amazing browser extensions with AI</p>
 
-        <form onSubmit={handleEmailSignUp} className="auth-form">
-          <div className="input-group">
-            <label htmlFor="email">Email</label>
-            <div className="input-wrapper">
-              <Mail size={18} className="input-icon" />
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                disabled={loading}
-              />
+        {/* Error */}
+        {error && <div className="error-alert"><span>⚠️</span> {error}</div>}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Full Name</label>
+            <div className="input-wrap">
+              <User className="input-icon" size={18} />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" required disabled={loading} />
             </div>
           </div>
 
-          <div className="input-group">
-            <label htmlFor="password">Password</label>
-            <div className="input-wrapper">
-              <Lock size={18} className="input-icon" />
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
-                required
-                disabled={loading}
-              />
+          <div className="form-group">
+            <label>Email Address</label>
+            <div className="input-wrap">
+              <Mail className="input-icon" size={18} />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required disabled={loading} />
             </div>
-            <p className="input-hint">Minimum 6 characters</p>
+          </div>
+
+          <div className="form-group">
+            <label>Password</label>
+            <div className="input-wrap">
+              <Lock className="input-icon" size={18} />
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} disabled={loading} />
+              <button type="button" className="toggle-pwd" onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="spin" size={18} />
-                Creating account...
-              </>
-            ) : (
-              'Create account'
-            )}
+            {loading ? <><Loader2 className="spin" size={18} /> Creating...</> : <>Create Account <ArrowRight size={18} /></>}
           </button>
         </form>
 
-        <div className="divider">
-          <span>OR</span>
-        </div>
+        {/* Divider */}
+        <div className="divider"><span>or</span></div>
 
-        <button onClick={handleGoogleSignIn} className="google-btn" disabled={loading}>
-          <Chrome size={18} />
+        {/* Google */}
+        <button onClick={handleGoogleSignUp} className="social-btn" disabled={loading}>
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+          </svg>
           Continue with Google
         </button>
 
-        <div className="auth-link">
-          Already have an account? <Link to="/login">Sign in</Link>
+        {/* Feature Badges */}
+        <div className="feature-badges">
+          <div className="feature-badge"><Zap size={14} /> 30 Free Credits</div>
+          <div className="feature-badge"><Shield size={14} /> Secure</div>
+          <div className="feature-badge"><Code size={14} /> AI Powered</div>
         </div>
+
+        {/* Login Link */}
+        <p className="login-link">Already have an account? <Link to="/login">Sign in</Link></p>
       </div>
 
-<style>{`
-  /* Premium Auth Container with Animated Background */
-  .auth-container {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 20px;
-    position: relative;
-    overflow: hidden;
-  }
+      <style>{`
+        .signup-page {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0a0a0a;
+          padding: 40px 24px;
+          position: relative;
+          overflow: hidden;
+          font-family: 'Inter', -apple-system, sans-serif;
+        }
 
-  /* Animated Background Circles */
-  .auth-container::before {
-    content: '';
-    position: absolute;
-    width: 600px;
-    height: 600px;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-    border-radius: 50%;
-    top: -200px;
-    right: -200px;
-    animation: float 20s infinite ease-in-out;
-  }
+        /* Background Effects */
+        .bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(100px);
+          pointer-events: none;
+        }
 
-  .auth-container::after {
-    content: '';
-    position: absolute;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
-    border-radius: 50%;
-    bottom: -100px;
-    left: -100px;
-    animation: float 15s infinite ease-in-out reverse;
-  }
+        .bg-orb-1 {
+          width: 500px;
+          height: 500px;
+          background: rgba(249, 115, 22, 0.12);
+          top: -150px;
+          right: -150px;
+        }
 
-  @keyframes float {
-    0%, 100% { transform: translate(0, 0) rotate(0deg); }
-    33% { transform: translate(30px, -50px) rotate(120deg); }
-    66% { transform: translate(-20px, 20px) rotate(240deg); }
-  }
+        .bg-orb-2 {
+          width: 400px;
+          height: 400px;
+          background: rgba(168, 85, 247, 0.08);
+          bottom: -100px;
+          left: -100px;
+        }
 
-  /* Glassmorphism Back Button */
-  .back-btn {
-    position: absolute;
-    top: 30px;
-    left: 30px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50px;
-    color: white;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 10;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  }
+        .bg-orb-3 {
+          width: 300px;
+          height: 300px;
+          background: rgba(34, 197, 94, 0.06);
+          top: 40%;
+          left: 60%;
+        }
 
-  .back-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
-    transform: translateX(-8px) scale(1.05);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
-  }
+        .bg-grid {
+          position: absolute;
+          inset: 0;
+          background-image: 
+            linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+          background-size: 50px 50px;
+        }
 
-  /* Glassmorphism Card with 3D Effect */
-  .auth-card {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 32px;
-    padding: 48px;
-    width: 100%;
-    max-width: 460px;
-    box-shadow: 
-      0 30px 90px rgba(0, 0, 0, 0.25),
-      0 0 1px rgba(255, 255, 255, 0.5) inset;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    position: relative;
-    z-index: 1;
-    animation: cardEntrance 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    transform-style: preserve-3d;
-  }
+        /* Container */
+        .signup-container {
+          width: 100%;
+          max-width: 420px;
+          position: relative;
+          z-index: 10;
+        }
 
-  @keyframes cardEntrance {
-    from {
-      opacity: 0;
-      transform: translateY(30px) scale(0.95);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
+        /* Logo */
+        .signup-logo {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          font-size: 20px;
+          font-weight: 700;
+          color: white;
+          text-decoration: none;
+          margin-bottom: 40px;
+        }
 
-  .auth-card:hover {
-    box-shadow: 
-      0 40px 110px rgba(0, 0, 0, 0.3),
-      0 0 1px rgba(255, 255, 255, 0.6) inset;
-  }
+        .signup-logo svg {
+          color: #f97316;
+        }
 
-  /* Animated Header */
-  .auth-header {
-    text-align: center;
-    margin-bottom: 40px;
-    animation: fadeInDown 0.6s ease-out 0.2s both;
-  }
+        /* Header */
+        .signup-title {
+          font-size: 32px;
+          font-weight: 800;
+          color: white;
+          text-align: center;
+          margin-bottom: 12px;
+          letter-spacing: -0.5px;
+        }
 
-  @keyframes fadeInDown {
-    from {
-      opacity: 0;
-      transform: translateY(-20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
+        .signup-subtitle {
+          font-size: 15px;
+          color: #737373;
+          text-align: center;
+          margin-bottom: 36px;
+        }
 
-  .auth-header h1 {
-    font-size: 32px;
-    font-weight: 900;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 12px;
-    letter-spacing: -0.5px;
-  }
+        /* Error */
+        .error-alert {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 18px;
+          background: rgba(248, 81, 73, 0.1);
+          border: 1px solid rgba(248, 81, 73, 0.3);
+          border-radius: 12px;
+          color: #f85149;
+          font-size: 14px;
+          margin-bottom: 24px;
+        }
 
-  .auth-header p {
-    color: #6b7280;
-    font-size: 15px;
-    font-weight: 500;
-  }
+        /* Form */
+        form {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
 
-  /* Premium Error Alert */
-  .error-alert {
-    background: linear-gradient(135deg, #fee 0%, #fdd 100%);
-    border: 2px solid rgba(239, 68, 68, 0.3);
-    color: #dc2626;
-    padding: 14px 18px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 14px;
-    font-weight: 600;
-    animation: shake 0.5s ease-in-out, fadeIn 0.3s ease-out;
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
-  }
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
 
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-8px); }
-    75% { transform: translateX(8px); }
-  }
+        .form-group label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #a3a3a3;
+        }
 
-  @keyframes fadeIn {
-    from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
-  }
+        .input-wrap {
+          position: relative;
+        }
 
-  /* Form Animations */
-  .auth-form {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-  }
+        .input-icon {
+          position: absolute;
+          left: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #525252;
+          pointer-events: none;
+        }
 
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    animation: slideInLeft 0.5s ease-out both;
-  }
+        .input-wrap input {
+          width: 100%;
+          padding: 16px 16px 16px 48px;
+          background: #171717;
+          border: 2px solid #262626;
+          border-radius: 12px;
+          color: white;
+          font-size: 15px;
+          transition: all 0.25s;
+        }
 
-  .input-group:nth-child(1) { animation-delay: 0.3s; }
-  .input-group:nth-child(2) { animation-delay: 0.4s; }
+        .input-wrap input:focus {
+          outline: none;
+          border-color: #f97316;
+          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
+        }
 
-  @keyframes slideInLeft {
-    from {
-      opacity: 0;
-      transform: translateX(-30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
+        .input-wrap input::placeholder {
+          color: #525252;
+        }
 
-  .input-group label {
-    font-size: 14px;
-    font-weight: 700;
-    color: #374151;
-    letter-spacing: 0.3px;
-  }
+        .toggle-pwd {
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          color: #525252;
+          cursor: pointer;
+        }
 
-  /* Premium Input Fields */
-  .input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
+        .toggle-pwd:hover { color: #a3a3a3; }
 
-  .input-icon {
-    position: absolute;
-    left: 18px;
-    color: #9ca3af;
-    pointer-events: none;
-    transition: all 0.3s ease;
-  }
+        /* Submit */
+        .submit-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          width: 100%;
+          padding: 16px;
+          background: linear-gradient(135deg, #f97316, #ea580c);
+          border: none;
+          border-radius: 12px;
+          color: white;
+          font-size: 16px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s;
+          box-shadow: 0 8px 32px rgba(249, 115, 22, 0.25);
+          margin-top: 8px;
+        }
 
-  .input-wrapper input {
-    width: 100%;
-    padding: 16px 16px 16px 52px;
-    border: 2px solid #e5e7eb;
-    border-radius: 16px;
-    font-size: 15px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    outline: none;
-    background: white;
-    font-weight: 500;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  }
+        .submit-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 40px rgba(249, 115, 22, 0.35);
+        }
 
-  .input-wrapper input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1), 0 4px 20px rgba(102, 126, 234, 0.15);
-    transform: translateY(-2px);
-  }
+        .submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
 
-  .input-wrapper input:focus + .input-icon,
-  .input-wrapper:focus-within .input-icon {
-    color: #667eea;
-    transform: scale(1.1);
-  }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-  .input-wrapper input:disabled {
-    background: #f9fafb;
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
+        /* Divider */
+        .divider {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin: 28px 0;
+        }
 
-  .input-hint {
-    font-size: 12px;
-    color: #9ca3af;
-    margin: 0;
-    font-weight: 500;
-  }
+        .divider::before, .divider::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: #262626;
+        }
 
-  /* Forgot Password Link */
-  .forgot-link {
-    text-align: right;
-    margin-top: -12px;
-    animation: fadeIn 0.5s ease-out 0.5s both;
-  }
+        .divider span {
+          font-size: 12px;
+          color: #525252;
+          text-transform: uppercase;
+        }
 
-  .forgot-link a {
-    color: #667eea;
-    font-size: 13px;
-    font-weight: 700;
-    text-decoration: none;
-    transition: all 0.2s;
-    position: relative;
-  }
+        /* Social */
+        .social-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          width: 100%;
+          padding: 14px;
+          background: #171717;
+          border: 2px solid #262626;
+          border-radius: 12px;
+          color: white;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s;
+        }
 
-  .forgot-link a::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 0;
-    height: 2px;
-    background: #667eea;
-    transition: width 0.3s ease;
-  }
+        .social-btn:hover {
+          background: #1f1f1f;
+          border-color: #3f3f3f;
+        }
 
-  .forgot-link a:hover::after {
-    width: 100%;
-  }
+        /* Feature Badges */
+        .feature-badges {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 32px;
+          flex-wrap: wrap;
+        }
 
-  /* Premium Submit Button */
-  .submit-btn {
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    border-radius: 16px;
-    font-size: 16px;
-    font-weight: 800;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    margin-top: 12px;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-    animation: fadeIn 0.5s ease-out 0.6s both;
-  }
+        .feature-badge {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          background: rgba(249, 115, 22, 0.08);
+          border: 1px solid rgba(249, 115, 22, 0.2);
+          border-radius: 50px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #fb923c;
+        }
 
-  .submit-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-    transition: left 0.5s;
-  }
+        /* Login Link */
+        .login-link {
+          text-align: center;
+          margin-top: 28px;
+          font-size: 14px;
+          color: #737373;
+        }
 
-  .submit-btn:hover::before {
-    left: 100%;
-  }
+        .login-link a {
+          color: #f97316;
+          font-weight: 600;
+          text-decoration: none;
+        }
 
-  .submit-btn:hover:not(:disabled) {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
-  }
+        .login-link a:hover {
+          text-decoration: underline;
+        }
 
-  .submit-btn:active:not(:disabled) {
-    transform: translateY(-1px) scale(0.98);
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  /* Stylish Divider */
-  .divider {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin: 32px 0;
-    color: #9ca3af;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    animation: fadeIn 0.5s ease-out 0.7s both;
-  }
-
-  .divider::before,
-  .divider::after {
-    content: '';
-    flex: 1;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  }
-
-  /* Premium Google Button */
-  .google-btn {
-    width: 100%;
-    padding: 16px;
-    background: white;
-    color: #374151;
-    border: 2px solid #e5e7eb;
-    border-radius: 16px;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-    animation: fadeIn 0.5s ease-out 0.8s both;
-  }
-
-  .google-btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(102, 126, 234, 0.1);
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-  }
-
-  .google-btn:hover::before {
-    width: 400px;
-    height: 400px;
-  }
-
-  .google-btn:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: #667eea;
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-  }
-
-  .google-btn:active:not(:disabled) {
-    transform: translateY(-1px);
-  }
-
-  .google-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  /* Auth Link with Animation */
-  .auth-link {
-    text-align: center;
-    margin-top: 28px;
-    color: #6b7280;
-    font-size: 14px;
-    font-weight: 500;
-    animation: fadeIn 0.5s ease-out 0.9s both;
-  }
-
-  .auth-link a {
-    color: #667eea;
-    font-weight: 800;
-    text-decoration: none;
-    transition: all 0.2s;
-    position: relative;
-  }
-
-  .auth-link a::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 0;
-    height: 2px;
-    background: linear-gradient(90deg, #667eea, #764ba2);
-    transition: width 0.3s ease;
-  }
-
-  .auth-link a:hover {
-    color: #764ba2;
-  }
-
-  .auth-link a:hover::after {
-    width: 100%;
-  }
-
-  /* Loading Spinner */
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  /* Responsive Design */
-  @media (max-width: 640px) {
-    .auth-card {
-      padding: 36px 28px;
-      border-radius: 28px;
-    }
-
-    .auth-header h1 {
-      font-size: 26px;
-    }
-
-    .back-btn {
-      top: 20px;
-      left: 20px;
-      padding: 10px 18px;
-    }
-
-    .input-wrapper input {
-      padding: 14px 14px 14px 48px;
-    }
-
-    .submit-btn, .google-btn {
-      padding: 14px;
-    }
-  }
-
-  /* Smooth Transitions for Everything */
-  * {
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  }
-`}</style>
-
+        /* Responsive */
+        @media (max-width: 480px) {
+          .signup-title { font-size: 26px; }
+          .feature-badges { gap: 8px; }
+          .feature-badge { padding: 6px 12px; font-size: 11px; }
+        }
+      `}</style>
     </div>
   );
 }
