@@ -603,10 +603,47 @@ const CodePreview: React.FC<CodePreviewProps> = ({ files, onBrowserSelect }) => 
         !f.name.includes('background') && !f.name.includes('content')
       );
 
-      // Simple script injection - let the original code run as-is
-      const injectedScripts = popupScripts.map(f =>
-        `<script>\n// File: ${f.name}\n${f.content}\n</script>`
-      ).join('\n');
+      // Remove script src tags that try to load files (they don't exist in blob)
+      html = html.replace(/<script\s+src=['"][^'"]*['"][^>]*>\s*<\/script>/gi, '');
+
+      // Inject scripts with DOMContentLoaded wrapper to ensure buttons exist
+      const injectedScripts = popupScripts.map(f => {
+        // Check if the code already has DOMContentLoaded
+        const hasDOMReady = f.content.includes('DOMContentLoaded') ||
+          f.content.includes('$(document).ready') ||
+          f.content.includes('window.onload');
+
+        if (hasDOMReady) {
+          // Code already waits for DOM, use as-is
+          return `<script>
+// File: ${f.name}
+try {
+  ${f.content}
+  console.log('✅ ${f.name} executed successfully');
+} catch(e) { console.error('❌ ${f.name} error:', e); }
+</script>`;
+        } else {
+          // Wrap in robust DOM readiness check
+          return `<script>
+// File: ${f.name}
+(function() {
+  const run = () => {
+    try {
+      ${f.content}
+      console.log('✅ ${f.name} executed successfully');
+    } catch(e) { console.error('❌ ${f.name} error:', e); }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    // DOM already ready, run immediately
+    run();
+  }
+})();
+</script>`;
+        }
+      }).join('\n');
 
       if (html.includes('</body>')) {
         html = html.replace(/<\/body>/i, `${injectedScripts}\n</body>`);

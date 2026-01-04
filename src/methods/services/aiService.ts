@@ -47,363 +47,230 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 // Fallback AI providers
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Updated to current model
+// Best Groq models for code generation (fallback order)
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',    // 70B - best for code
+  'llama-3.1-70b-versatile',    // 70B fallback
+  'llama-3.2-90b-vision-preview', // 90B vision
+  'mixtral-8x7b-32768',         // 8x7B MoE
+];
 
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || "";
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ============================================
-// BEST FREE OPENROUTER MODELS FOR CODE GENERATION (2024-2025)
+// BEST FREE OPENROUTER MODELS FOR CODE GENERATION (2025)
+// Ordered by quality: highest parameter models first, fallback to smaller
 // ============================================
-// Carefully selected for optimal Chrome extension code generation
 const OPENROUTER_FREE_MODELS = [
-  'deepseek/deepseek-r1-0528:free',           // #1 Best reasoning & code - top tier
-  'qwen/qwen3-235b-a22b:free',                // #2 Excellent code generation  
-  'meta-llama/llama-3.3-70b-instruct:free',   // #3 Strong instruction following
-  'deepseek/deepseek-chat:free',              // #4 Fast and reliable coding
-  'qwen/qwen-2.5-coder-32b-instruct:free',    // #5 Specialized coder model
-  'microsoft/phi-4:free',                      // #6 Compact but capable
+  // === TIER 1: Largest/Best Models (70B+) ===
+  'deepseek/deepseek-r1-0528:free',           // 671B MoE - BEST reasoning & code
+  'qwen/qwen3-235b-a22b:free',                // 235B - exceptional code generation
+  'meta-llama/llama-3.3-70b-instruct:free',   // 70B - strong instruction following
+  'nvidia/llama-3.1-nemotron-70b-instruct:free', // 70B NVIDIA optimized
+  'qwen/qwen-2.5-72b-instruct:free',          // 72B - excellent reasoning
+
+  // === TIER 2: Mid-range Models (30-70B) ===
+  'qwen/qwen-2.5-coder-32b-instruct:free',    // 32B specialized coder
+  'google/gemma-3-27b-it:free',               // 27B - good balance speed/quality
+  'mistralai/mistral-small-3.1-24b-instruct:free', // 24B - fast and capable
+
+  // === TIER 3: Fallback Models (7-20B) ===
+  'deepseek/deepseek-chat:free',              // Fast and reliable
+  'meta-llama/llama-3.2-11b-vision-instruct:free', // 11B multimodal
+  'microsoft/phi-4:free',                      // 14B - compact but capable
+  'google/gemma-2-9b-it:free',                // 9B - very fast
 ];
 
-// Provider priority order - OpenRouter first (FREE models), then Groq. Gemini removed per user request.
+// Provider priority order - OpenRouter FIRST (has best FREE models)
 type AIProvider = 'openrouter' | 'groq';
 const PROVIDER_PRIORITY: AIProvider[] = ['openrouter', 'groq'];
 
-// Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [2000, 5000, 10000]; // Exponential backoff delays
+// Retry configuration - more patient for better results
+const MAX_RETRIES = 5;
+const RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000]; // Progressive backoff
+
+// Prompt length limits to prevent timeouts
+const MAX_PROMPT_LENGTH = 4000; // Characters - longer prompts will be summarized
+const API_TIMEOUT_MS = 90000;   // 90 second timeout for API calls (increased for complex extensions)
+
+// Fetch with timeout wrapper
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000} seconds`);
+    }
+    throw error;
+  }
+}
+
+// Smart summarization that preserves file structure and architecture requirements
+function summarizePrompt(prompt: string): string {
+  if (prompt.length <= MAX_PROMPT_LENGTH) return prompt;
+
+  console.log(`⚠️ Prompt too long (${prompt.length} chars), smart summarizing...`);
+
+  // Extract file/folder structure if mentioned (preserve architecture)
+  const fileStructure = prompt.match(/(?:├──|└──|extension\/|manifest\.json|\.js|\.html|\.css|\.json|content\.js|background\.js|popup\.|grammar\/|data\/|ui\/|rules\.js|spellcheck|tokenizer)/gi) || [];
+  const uniqueFiles = [...new Set(fileStructure)].slice(0, 15);
+
+  // Extract key features from the prompt
+  const featurePatterns = [
+    /(?:detect|check|validate|analyze)[^.]*\./gi,
+    /(?:underline|highlight|show|display)[^.]*\./gi,
+    /(?:implement|build|create)[^.]*\./gi,
+    /(?:rule|grammar|spell|error|correction)[^.]*\./gi,
+  ];
+
+  const features: string[] = [];
+  featurePatterns.forEach(pattern => {
+    const matches = prompt.match(pattern);
+    if (matches) features.push(...matches.slice(0, 2));
+  });
+
+  // Extract specific requirements (❌ NO ..., ✅ Must have...)
+  const requirements = prompt.match(/[❌✅][^❌✅\n]*/g) || [];
+
+  // Build concise but comprehensive summary
+  const lines = prompt.split('\n').filter(l => l.trim());
+  const goalLine = lines.find(l => /goal|objective|build|create/i.test(l))?.substring(0, 200) || lines[0]?.substring(0, 200);
+
+  const summary = `${goalLine}
+
+KEY REQUIREMENTS:
+${requirements.slice(0, 6).join('\n')}
+
+FILE STRUCTURE NEEDED: ${uniqueFiles.join(', ')}
+
+FEATURES TO IMPLEMENT:
+${features.slice(0, 5).join('\n')}
+
+Generate ALL necessary files as a complete working extension using === filename === format.
+For complex extensions, generate MORE files as needed (content.js, background.js, rules.js, etc.)`;
+
+  console.log(`✅ Smart summarized to ${summary.length} chars (preserved ${uniqueFiles.length} file refs)`);
+  return summary;
+}
 
 // ============================================
 // ENHANCED SYSTEM PROMPT WITH KNOWLEDGE BASE
 // ============================================
 
-const SYSTEM_PROMPT = `You are an EXPERT Chrome Extension developer. You MUST generate COMPLETE, PRODUCTION-READY, BEAUTIFUL extensions.
+const SYSTEM_PROMPT = `You are an EXPERT Chrome Extension developer. Generate PRODUCTION-READY code.
 
-# CRITICAL RULES - READ CAREFULLY
+# 🚨🚨🚨 CRITICAL: YOU MUST GENERATE AT LEAST 4 FILES 🚨🚨🚨
 
-1. **BUILD EXACTLY WHAT USER ASKS** - Read their request carefully. If they want a YouTube extension, build YouTube features. If todo app, build todo features. NEVER build a generic template.
-
-2. **EVERY BUTTON MUST WORK** - Every single button, input, and interactive element MUST have complete JavaScript functionality. NO placeholders. NO "// TODO".
-
-3. **MODERN BEAUTIFUL UI** - Use gradients, animations, glassmorphism. The extension must look PROFESSIONAL and STUNNING.
-
-4. **DATA PERSISTENCE** - Always use chrome.storage.local to save and load data.
-
-5. **MANIFEST V3 ONLY** - Always use manifest_version: 3.
-
-# MANDATORY OUTPUT FORMAT
-
-You MUST output files in this EXACT format:
-
-EXPLANATION: [One sentence describing what this extension does]
+You MUST output ALL of these files in your response:
 
 === manifest.json ===
-{
-  "manifest_version": 3,
-  "name": "[Extension Name]",
-  "version": "1.0.0",
-  "description": "[Description]",
-  "permissions": ["storage"],
-  "action": {
-    "default_popup": "index.html",
-    "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
-    }
-  },
-  "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  }
-}
+(complete JSON content here)
 
-=== index.html ===
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>[Extension Name]</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <!-- Your HTML content here -->
-  </div>
-  <script src="script.js"></script>
-</body>
-</html>
+=== popup.html ===
+(complete HTML content here)
 
-=== styles.css ===
-/* Modern CSS with variables, gradients, animations */
-:root {
-  --primary: #667eea;
-  --secondary: #764ba2;
-  --accent: #f093fb;
-  --bg-dark: #1a1a2e;
-  --bg-card: rgba(255, 255, 255, 0.1);
-  --text: #ffffff;
-  --text-muted: rgba(255, 255, 255, 0.7);
-  --border-radius: 12px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-}
+=== popup.css ===
+(complete CSS content here)
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+=== popup.js ===
+(complete JavaScript content here)
 
-body {
-  width: 380px;
-  min-height: 500px;
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: linear-gradient(135deg, var(--bg-dark) 0%, #16213e 50%, #0f3460 100%);
-  color: var(--text);
-  overflow-x: hidden;
-}
+DO NOT generate only manifest.json! That is a CRITICAL FAILURE.
+The extension WILL NOT WORK without ALL 4 files.
 
-.container {
-  padding: 20px;
-}
+# 🧠 THINK FIRST, CODE SECOND
 
-/* Add glassmorphism cards, hover effects, animations */
+Before writing code, ANALYZE the user's request:
+1. What is the MAIN PURPOSE of this extension?
+2. What BUTTONS and ACTIONS does the user need?
+3. What DATA needs to be stored/retrieved?
 
-=== script.js ===
-document.addEventListener('DOMContentLoaded', function() {
-  'use strict';
+# 📦 FILE FORMAT (USE EXACTLY THIS FORMAT)
 
-  // 1. Get ALL DOM elements by ID
-  // 2. Load saved data from chrome.storage.local
-  // 3. Add event listeners to ALL buttons
-  // 4. Each button handler MUST do something visible
+Generate files using === filename === markers:
 
-  // Example chrome.storage usage:
-  // Load: chrome.storage.local.get(['data'], (result) => { ... });
-  // Save: chrome.storage.local.set({ data: value });
-});
+=== manifest.json ===
+- manifest_version: 3
+- permissions: ["storage"] + any needed
+- action with default_popup: "popup.html"
 
-# COMPLETE CODE EXAMPLES
+=== popup.html ===
+- Complete HTML structure
+- Each button MUST have a unique id attribute
+- Link to popup.css and popup.js
 
-## TODO LIST JAVASCRIPT PATTERN:
-\`\`\`javascript
-document.addEventListener('DOMContentLoaded', function() {
-  'use strict';
-  
-  const taskInput = document.getElementById('taskInput');
-  const addBtn = document.getElementById('addBtn');
-  const taskList = document.getElementById('taskList');
-  const clearBtn = document.getElementById('clearBtn');
-  
-  let tasks = [];
-  
-  // Load tasks on startup
-  chrome.storage.local.get(['tasks'], (result) => {
-    tasks = result.tasks || [];
-    renderTasks();
-  });
-  
-  function saveTasks() {
-    chrome.storage.local.set({ tasks: tasks });
-  }
-  
-  function renderTasks() {
-    taskList.innerHTML = '';
-    if (tasks.length === 0) {
-      taskList.innerHTML = '<p class="empty-state">No tasks yet. Add one above!</p>';
-      return;
-    }
-    tasks.forEach((task, index) => {
-      const div = document.createElement('div');
-      div.className = 'task-item' + (task.completed ? ' completed' : '');
-      div.innerHTML = \`
-        <span class="task-text">\${task.text}</span>
-        <div class="task-actions">
-          <button class="complete-btn" data-index="\${index}">✓</button>
-          <button class="delete-btn" data-index="\${index}">×</button>
-        </div>
-      \`;
-      taskList.appendChild(div);
-    });
-    
-    // Add click handlers for complete/delete buttons
-    document.querySelectorAll('.complete-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const index = parseInt(this.dataset.index);
-        tasks[index].completed = !tasks[index].completed;
-        saveTasks();
-        renderTasks();
-      });
-    });
-    
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const index = parseInt(this.dataset.index);
-        tasks.splice(index, 1);
-        saveTasks();
-        renderTasks();
-      });
-    });
-  }
-  
-  addBtn.addEventListener('click', function() {
-    const text = taskInput.value.trim();
-    if (text) {
-      tasks.unshift({ id: Date.now(), text: text, completed: false });
-      taskInput.value = '';
-      saveTasks();
-      renderTasks();
-    }
-  });
-  
-  taskInput.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') addBtn.click();
-  });
-  
-  clearBtn.addEventListener('click', function() {
-    if (confirm('Clear all tasks?')) {
-      tasks = [];
-      saveTasks();
-      renderTasks();
-    }
-  });
-});
-\`\`\`
+=== popup.css ===
+- Modern dark theme with gradients
+- Animations for hover states
+- Width: 360-400px, min-height: 400px
 
-## MODERN CSS PATTERN:
-\`\`\`css
-:root {
-  --primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --accent: #f093fb;
-  --dark: #1a1a2e;
-  --card: rgba(255, 255, 255, 0.1);
-  --glass: rgba(255, 255, 255, 0.05);
-}
+=== popup.js ===
+CRITICAL: This file MUST contain:
+- document.addEventListener('DOMContentLoaded', function() { ... })
+- For EACH button in HTML: document.getElementById('buttonId').addEventListener('click', function() { ... })
+- REAL functionality inside handlers - NOT comments or placeholders
+- chrome.storage.local.get/set for data persistence
 
-body {
-  width: 380px;
-  min-height: 500px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color: #fff;
-}
+For complex extensions, also generate:
+=== content.js === (for page manipulation)
+=== background.js === (for service worker)
+=== Additional files as needed ===
 
-.container { padding: 20px; }
+# ⚡ WORKING CODE REQUIREMENTS
 
-.header {
-  text-align: center;
-  margin-bottom: 20px;
-}
+1. Every button MUST have a corresponding click handler
+2. Every handler MUST do something REAL:
+   - Add/remove items from lists
+   - Save/load from chrome.storage
+   - Modify DOM elements
+   - Perform calculations
+   - NO placeholder comments like "// TODO" or "// Real functionality here"
 
-.header h1 {
-  font-size: 24px;
-  background: linear-gradient(135deg, #667eea, #f093fb);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
+3. Use chrome.storage.local for ALL data:
+   chrome.storage.local.get(['key'], result => { ... });
+   chrome.storage.local.set({ key: value });
 
-.input-group {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
+4. For content scripts accessing page content:
+   - Use chrome.tabs.sendMessage to communicate
+   - content.js listens with chrome.runtime.onMessage.addListener
 
-input {
-  flex: 1;
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.3s ease;
-}
+# 🎨 UI REQUIREMENTS
 
-input:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
-}
+- Dark mode with gradient backgrounds
+- Rounded corners and subtle shadows
+- Hover effects on interactive elements
+- Clear visual feedback for actions
+- Empty states when no data exists
 
-input::placeholder { color: rgba(255, 255, 255, 0.5); }
+# ❌ DO NOT
 
-.btn {
-  padding: 12px 20px;
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
+- Generate placeholder/skeleton code
+- Copy example code with comments
+- Leave buttons without handlers
+- Use generic names like "Click Me"
+- Skip files - generate ALL needed files
 
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-}
+# ✅ DO
 
-.btn:active { transform: translateY(0); }
+- Think about what the user ACTUALLY wants
+- Generate COMPLETE, WORKING code
+- Make each extension UNIQUE to the request
+- Test mentally: "If I click this button, what happens?"
 
-.card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  transition: all 0.3s ease;
-}
+Generate the extension now based on the user's specific request.`;
 
-.card:hover {
-  transform: translateX(5px);
-  border-color: #667eea;
-}
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
-.animated { animation: fadeIn 0.3s ease; }
-\`\`\`
-
-# CHROME APIS REFERENCE
-
-## Storage (ALWAYS USE):
-chrome.storage.local.get(['key'], (result) => { const value = result.key || defaultValue; });
-chrome.storage.local.set({ key: value });
-
-## Tabs (for tab extensions):
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { const tab = tabs[0]; });
-chrome.tabs.create({ url: 'https://example.com' });
-
-## Alarms (for timers):
-chrome.alarms.create('myAlarm', { delayInMinutes: 1 });
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === 'myAlarm') { ... } });
-
-## Notifications:
-chrome.notifications.create({ type: 'basic', iconUrl: 'icon48.png', title: 'Title', message: 'Message' });
-
-# PERMISSIONS REFERENCE
-- "storage" - for saving data (ALWAYS include)
-- "tabs" - for accessing tab URLs
-- "activeTab" - for current tab access
-- "notifications" - for desktop notifications
-- "alarms" - for timers and scheduling
-- "clipboardWrite" / "clipboardRead" - for clipboard access
-- "bookmarks" - for bookmark management
-
-# REMEMBER
-1. Generate COMPLETE, WORKING code - never partial
-2. Every button MUST have a click handler
-3. Use modern, beautiful CSS with gradients and animations
-4. Always include chrome.storage.local for data persistence
-5. Match the output format EXACTLY with === filename === markers
-6. Build what the USER asked for, not a generic template`;
 
 
 
@@ -582,7 +449,7 @@ function parseGeneratedFiles(
 // Alternative parsing for when AI doesn't use === markers
 function tryAlternativeParsing(text: string, callbacks?: StreamCallbacks): GeneratedFile[] {
   const files: GeneratedFile[] = [];
-  const MAX_FILES = 6; // Limit total files to prevent runaway parsing
+  const MAX_FILES = 15; // Allow many files for complex extensions (grammar checkers, etc.)
 
   // Try to extract JSON blocks for manifest (only first one)
   const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
@@ -597,47 +464,82 @@ function tryAlternativeParsing(text: string, callbacks?: StreamCallbacks): Gener
     callbacks?.onFileComplete?.(files[files.length - 1]);
   }
 
-  // Try to extract HTML (max 2)
+  // Try to extract HTML (max 3 - popup.html, index.html, options.html)
   const htmlMatches = text.matchAll(/```html\s*([\s\S]*?)```/g);
   let htmlIndex = 0;
+  const htmlNames = ['popup.html', 'index.html', 'options.html'];
   for (const match of htmlMatches) {
-    if (htmlIndex >= 2 || files.length >= MAX_FILES) break;
-    const filename = htmlIndex === 0 ? 'index.html' : 'options.html';
+    if (htmlIndex >= 3 || files.length >= MAX_FILES) break;
+    // Check if content mentions popup or options
+    const content = match[1].trim();
+    let filename = htmlNames[htmlIndex];
+    if (content.includes('popup.js') || content.includes('popup.css')) {
+      filename = 'popup.html';
+    } else if (content.includes('options')) {
+      filename = 'options.html';
+    }
+    // Skip if already have this file
+    if (files.some(f => f.name === filename)) {
+      htmlIndex++;
+      continue;
+    }
     callbacks?.onFileStart?.(filename);
     files.push({
       name: filename,
       path: filename,
-      content: match[1].trim(),
+      content: content,
       language: 'html'
     });
     callbacks?.onFileComplete?.(files[files.length - 1]);
     htmlIndex++;
   }
 
-  // Try to extract CSS (max 1)
-  const cssMatch = text.match(/```css\s*([\s\S]*?)```/);
-  if (cssMatch && files.length < MAX_FILES) {
-    callbacks?.onFileStart?.('styles.css');
-    files.push({
-      name: 'styles.css',
-      path: 'styles.css',
-      content: cssMatch[1].trim(),
-      language: 'css'
-    });
-    callbacks?.onFileComplete?.(files[files.length - 1]);
-  }
-
-  // Try to extract JavaScript (max 2 - script.js and optionally background.js)
-  const jsMatches = text.matchAll(/```(?:javascript|js)\s*([\s\S]*?)```/g);
-  let jsIndex = 0;
-  for (const match of jsMatches) {
-    if (jsIndex >= 2 || files.length >= MAX_FILES) break;
-    const filename = jsIndex === 0 ? 'script.js' : 'background.js';
+  // Try to extract CSS (max 2 - popup.css and styles.css)
+  const cssMatches = text.matchAll(/```css\s*([\s\S]*?)```/g);
+  let cssIndex = 0;
+  for (const match of cssMatches) {
+    if (cssIndex >= 2 || files.length >= MAX_FILES) break;
+    const filename = cssIndex === 0 ? 'popup.css' : 'styles.css';
+    if (files.some(f => f.name === filename)) {
+      cssIndex++;
+      continue;
+    }
     callbacks?.onFileStart?.(filename);
     files.push({
       name: filename,
       path: filename,
       content: match[1].trim(),
+      language: 'css'
+    });
+    callbacks?.onFileComplete?.(files[files.length - 1]);
+    cssIndex++;
+  }
+
+  // Try to extract JavaScript (max 3 - popup.js, background.js, content.js)
+  const jsMatches = text.matchAll(/```(?:javascript|js)\s*([\s\S]*?)```/g);
+  let jsIndex = 0;
+  for (const match of jsMatches) {
+    if (jsIndex >= 3 || files.length >= MAX_FILES) break;
+    const content = match[1].trim();
+    let filename: string;
+    // Detect file type by content
+    if (content.includes('chrome.runtime.onInstalled') || content.includes('service_worker')) {
+      filename = 'background.js';
+    } else if (content.includes('chrome.runtime.onMessage') && content.includes('document.querySelector')) {
+      filename = 'content.js';
+    } else {
+      filename = jsIndex === 0 ? 'popup.js' : (jsIndex === 1 ? 'script.js' : 'background.js');
+    }
+    // Skip if already have this file
+    if (files.some(f => f.name === filename)) {
+      jsIndex++;
+      continue;
+    }
+    callbacks?.onFileStart?.(filename);
+    files.push({
+      name: filename,
+      path: filename,
+      content: content,
       language: 'javascript'
     });
     callbacks?.onFileComplete?.(files[files.length - 1]);
@@ -735,47 +637,70 @@ async function callGroq(
     existingContext += '\n⚠️ Keep existing functionality!\n';
   }
 
-  const fullPrompt = `${existingContext}\n${prompt}`;
+  // Summarize long prompts to prevent timeout
+  const summarizedPrompt = summarizePrompt(prompt);
+  const fullPrompt = `${existingContext}\n${summarizedPrompt}`;
 
-  console.log('🦙 Calling Groq (Llama 3.1 70B)...');
-  callbacks?.onTerminalCommand?.({
-    type: 'info',
-    message: 'Switching to Groq (Llama 3.1)...',
-    timestamp: new Date()
-  });
+  // Try each Groq model until one works
+  let lastError = '';
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    const model = GROQ_MODELS[i];
+    try {
+      console.log(`🦙 Calling Groq (${model})...`);
+      callbacks?.onTerminalCommand?.({
+        type: 'info',
+        message: `Trying Groq ${model}...`,
+        timestamp: new Date()
+      });
 
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT.substring(0, 4000) },
-        { role: 'user', content: fullPrompt }
-      ],
-      temperature: 0.4,       // Lower for consistent code
-      max_tokens: 16000       // Higher for complete code
-    })
-  });
+      // Use timeout wrapper to prevent hanging
+      const response = await fetchWithTimeout(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT.substring(0, 6000) },
+            { role: 'user', content: fullPrompt }
+          ],
+          temperature: 0.3,       // Lower for more consistent code
+          max_tokens: 16000       // Higher for complete code
+        })
+      });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        lastError = `${model}: ${response.status} - ${errorText}`;
+        console.warn(`❌ Groq ${model} failed:`, lastError);
+        continue;
+      }
+
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || '';
+
+      if (!text || text.length < 100) {
+        lastError = `${model}: Empty or too short response`;
+        console.warn(`❌ Groq ${model} returned empty response`);
+        continue;
+      }
+
+      callbacks?.onTerminalCommand?.({
+        type: 'success',
+        message: `Generated with Groq ${model}`,
+        timestamp: new Date()
+      });
+
+      return text;
+    } catch (err: any) {
+      lastError = `${model}: ${err.message}`;
+      console.warn(`❌ Groq ${model} error:`, err);
+    }
   }
 
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content || '';
-
-  callbacks?.onTerminalCommand?.({
-    type: 'success',
-    message: 'Groq response received',
-    timestamp: new Date()
-  });
-
-  return text;
+  throw new Error(`All Groq models failed. Last error: ${lastError}`);
 }
 
 // ============================================
@@ -803,7 +728,9 @@ async function callOpenRouter(
     existingContext += '\n⚠️ CRITICAL: Keep existing functionality! Only modify what user asked for.\n';
   }
 
-  const fullUserPrompt = `${existingContext}\n\n=== USER REQUEST ===\n${prompt}\n\nGenerate COMPLETE, WORKING code that directly addresses the user's request!`;
+  // Summarize long prompts to prevent timeout
+  const summarizedPrompt = summarizePrompt(prompt);
+  const fullUserPrompt = `${existingContext}\n\n=== USER REQUEST ===\n${summarizedPrompt}\n\nGenerate COMPLETE, WORKING code that directly addresses the user's request!`;
 
   // Try each model until one works
   let lastError = '';
@@ -817,7 +744,8 @@ async function callOpenRouter(
         timestamp: new Date()
       });
 
-      const response = await fetch(OPENROUTER_API_URL, {
+      // Use timeout wrapper to prevent hanging
+      const response = await fetchWithTimeout(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -932,7 +860,8 @@ async function callGeminiWithRetry(
       throw new Error('No AI provider configured. Please add VITE_GEMINI_API_KEY, VITE_OPENROUTER_API_KEY, or VITE_GROQ_API_KEY to your .env file.');
     }
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    // Use timeout wrapper to prevent hanging on long requests
+    const response = await fetchWithTimeout(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -946,7 +875,7 @@ async function callGeminiWithRetry(
           topK: 40
         }
       })
-    });
+    }, API_TIMEOUT_MS);
 
     // Handle rate limiting (429 error) - TRY FALLBACK PROVIDERS
     if (response.status === 429) {
@@ -1153,11 +1082,238 @@ export async function generateExtensionCode(
       throw new Error('No files were generated. Please try a more specific prompt.');
     }
 
+    // CRITICAL: Validate minimum 4 files for complete extension
+    const hasManifest = newFiles.some(f => f.name === 'manifest.json');
+    const hasHtml = newFiles.some(f => f.name.endsWith('.html'));
+    const hasCss = newFiles.some(f => f.name.endsWith('.css'));
+    const hasJs = newFiles.some(f => f.name.endsWith('.js'));
+
+    if (newFiles.length < 4 || !hasManifest || !hasHtml || !hasCss || !hasJs) {
+      console.warn('⚠️ Warning: Incomplete extension generated. Only', newFiles.length, 'files:', newFiles.map(f => f.name));
+
+      unifiedCallbacks?.onTerminalCommand?.({
+        type: 'warning',
+        message: `Warning: Only ${newFiles.length} files generated. Extensions require at least 4 files (manifest.json, popup.html, popup.css, popup.js)`,
+        timestamp: new Date()
+      });
+
+      // CRITICAL: Retry when we have less than 4 files (not just 1)
+      if (newFiles.length < 4) {
+        unifiedCallbacks?.onStatusChange?.('Incomplete response. Retrying with explicit instructions...');
+        unifiedCallbacks?.onTerminalCommand?.({
+          type: 'info',
+          message: 'Retrying generation to get all 4 required files...',
+          timestamp: new Date()
+        });
+
+        const retryPrompt = `CRITICAL: Your previous response was INCOMPLETE. You MUST generate ALL 4 FILES.
+
+User wants: "${prompt}"
+
+OUTPUT EXACTLY THIS FORMAT (replace placeholders with real code):
+
+=== manifest.json ===
+{
+  "manifest_version": 3,
+  "name": "Extension Name Here",
+  "version": "1.0.0",
+  "description": "Description",
+  "permissions": ["storage"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
+
+=== popup.html ===
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Extension</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Title</h1>
+    <button id="actionBtn">Click Me</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+
+=== popup.css ===
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 360px; min-height: 400px; background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; font-family: -apple-system, sans-serif; }
+.container { padding: 20px; }
+h1 { margin-bottom: 15px; }
+button { width: 100%; padding: 12px; background: #667eea; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; }
+button:hover { background: #5a6fd6; transform: translateY(-2px); }
+
+=== popup.js ===
+document.addEventListener('DOMContentLoaded', function() {
+  const actionBtn = document.getElementById('actionBtn');
+  actionBtn.addEventListener('click', function() {
+    alert('Button clicked!');
+  });
+});
+
+GENERATE ALL 4 FILES ABOVE with proper content for: "${prompt}"`;
+
+        try {
+          const retryText = await callGeminiWithRetry(retryPrompt, existingFiles, unifiedCallbacks, 0);
+          const retryFiles = parseGeneratedFiles(retryText, unifiedCallbacks);
+          if (retryFiles.length >= 4) {
+            newFiles.length = 0;
+            newFiles.push(...retryFiles);
+            console.log('✅ Retry successful:', retryFiles.map(f => f.name));
+            unifiedCallbacks?.onTerminalCommand?.({
+              type: 'success',
+              message: `Retry successful! Generated ${retryFiles.length} files`,
+              timestamp: new Date()
+            });
+          } else if (retryFiles.length > newFiles.length) {
+            // At least got more files, use them
+            newFiles.length = 0;
+            newFiles.push(...retryFiles);
+            console.log('⚠️ Retry got more files:', retryFiles.map(f => f.name));
+          }
+        } catch (retryError) {
+          console.warn('Retry failed:', retryError);
+        }
+
+        // FINAL FALLBACK: If we still don't have 4 files, generate minimal working set
+        if (newFiles.length < 4 && hasManifest) {
+          console.log('🔧 Generating fallback files...');
+          unifiedCallbacks?.onTerminalCommand?.({
+            type: 'info',
+            message: 'Generating fallback skeleton files...',
+            timestamp: new Date()
+          });
+
+          const extensionName = prompt.split(' ').slice(0, 4).join(' ') || 'My Extension';
+
+          if (!hasHtml) {
+            newFiles.push({
+              name: 'popup.html',
+              path: 'popup.html',
+              content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${extensionName}</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>${extensionName}</h1>
+    </header>
+    <main class="content">
+      <p>Your extension is working! Customize this popup.</p>
+      <button id="actionBtn">Click Me</button>
+    </main>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>`,
+              language: 'html'
+            });
+          }
+
+          if (!hasCss) {
+            newFiles.push({
+              name: 'popup.css',
+              path: 'popup.css',
+              content: `* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 360px;
+  min-height: 400px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #e6edf3;
+}
+.container { padding: 20px; }
+.header { text-align: center; margin-bottom: 20px; }
+h1 { font-size: 1.5rem; font-weight: 600; }
+.content { text-align: center; }
+p { margin-bottom: 15px; opacity: 0.8; }
+button {
+  width: 100%;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }`,
+              language: 'css'
+            });
+          }
+
+          if (!hasJs) {
+            newFiles.push({
+              name: 'popup.js',
+              path: 'popup.js',
+              content: `document.addEventListener('DOMContentLoaded', function() {
+  'use strict';
+  
+  // Find ALL buttons in the page and add click handlers
+  const allButtons = document.querySelectorAll('button');
+  
+  allButtons.forEach(function(btn, index) {
+    btn.addEventListener('click', function(e) {
+      const originalText = btn.textContent;
+      const originalBg = btn.style.background;
+      
+      // Show click feedback
+      btn.textContent = 'Done!';
+      btn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+      btn.style.transform = 'scale(0.95)';
+      
+      // Reset after delay
+      setTimeout(function() {
+        btn.textContent = originalText;
+        btn.style.background = originalBg;
+        btn.style.transform = '';
+      }, 800);
+      
+      console.log('Button clicked:', btn.id || btn.textContent);
+    });
+  });
+  
+  // Also handle any specific button by ID
+  const actionBtn = document.getElementById('actionBtn');
+  if (actionBtn) {
+    actionBtn.addEventListener('click', function() {
+      alert('Extension is working!');
+    });
+  }
+  
+  console.log('Extension loaded! Found', allButtons.length, 'buttons');
+});`,
+              language: 'javascript'
+            });
+          }
+
+          unifiedCallbacks?.onTerminalCommand?.({
+            type: 'success',
+            message: `Added ${4 - (hasManifest ? 1 : 0) - (hasHtml ? 1 : 0) - (hasCss ? 1 : 0) - (hasJs ? 1 : 0)} fallback files`,
+            timestamp: new Date()
+          });
+        }
+      }
+    }
+
     console.log('📦 Generated files:', newFiles.map(f => f.name).join(', '));
 
     unifiedCallbacks.onTerminalCommand?.({
       type: 'info',
-      message: `Generated ${newFiles.length} files: ${newFiles.map(f => f.name).join(', ')}`,
+      message: `Generated ${newFiles.length} files: ${newFiles.map(f => f.name).join(', ')} `,
       timestamp: new Date()
     });
 
@@ -1169,12 +1325,13 @@ export async function generateExtensionCode(
     // Auto-update manifest for new files
     finalFiles = updateManifestForFiles(finalFiles);
 
-    // Smart sorting - manifest first, then html, css, js, then others
+    // Smart sorting - manifest first, then popup/index files, then background, content
     const order = [
       'manifest.json',
+      'popup.html', 'popup.css', 'popup.js',
       'index.html', 'styles.css', 'script.js',
       'background.js',
-      'content.js',
+      'content.js', 'content.css',
       'options.html', 'options.css', 'options.js'
     ];
 
@@ -1212,11 +1369,11 @@ export async function generateExtensionCode(
     unifiedCallbacks.onStatusChange?.('Error');
     unifiedCallbacks.onTerminalCommand?.({
       type: 'error',
-      message: `Build failed: ${error.message}`,
+      message: `Build failed: ${error.message} `,
       timestamp: new Date()
     });
 
-    throw new Error(`Code generation failed: ${error.message}`);
+    throw new Error(`Code generation failed: ${error.message} `);
   }
 }
 
@@ -1225,15 +1382,24 @@ export async function generateExtensionCode(
 // ============================================
 
 export function validateExtension(files: GeneratedFile[]) {
-  const required = ['manifest.json', 'popup.html', 'popup.js'];
   const names = files.map(f => f.name);
-  const missing = required.filter(f => !names.includes(f));
 
-  const warnings = [];
+  // Support both naming conventions
+  const hasHtml = names.includes('popup.html') || names.includes('index.html');
+  const hasJs = names.includes('popup.js') || names.includes('script.js');
+  const hasManifest = names.includes('manifest.json');
+  const hasCss = names.includes('popup.css') || names.includes('styles.css');
 
-  // Check for popup.css
-  if (!names.includes('popup.css')) {
-    warnings.push('Missing popup.css - extension may not be styled');
+  const missing: string[] = [];
+  if (!hasManifest) missing.push('manifest.json');
+  if (!hasHtml) missing.push('popup.html or index.html');
+  if (!hasJs) missing.push('popup.js or script.js');
+
+  const warnings: string[] = [];
+
+  // Check for CSS
+  if (!hasCss) {
+    warnings.push('Missing CSS file - extension may not be styled');
   }
 
   // Check manifest content
@@ -1242,8 +1408,10 @@ export function validateExtension(files: GeneratedFile[]) {
     try {
       const parsed = JSON.parse(manifest.content);
       if (!parsed.manifest_version) warnings.push('Manifest missing manifest_version');
+      if (parsed.manifest_version !== 3) warnings.push('Manifest should use manifest_version: 3');
       if (!parsed.name) warnings.push('Manifest missing name');
       if (!parsed.version) warnings.push('Manifest missing version');
+      if (!parsed.permissions?.includes('storage')) warnings.push('Consider adding "storage" permission for data persistence');
     } catch (e) {
       warnings.push('Manifest JSON is invalid');
     }

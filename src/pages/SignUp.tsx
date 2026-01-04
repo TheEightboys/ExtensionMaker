@@ -178,13 +178,20 @@ export default function SignUp() {
         .signup-page {
           min-height: 100vh;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
           background: #0a0a0a;
           padding: 40px 24px;
           position: relative;
-          overflow: hidden;
+          overflow-y: auto;
+          overflow-x: hidden;
           font-family: 'Inter', -apple-system, sans-serif;
+        }
+        
+        @media (min-height: 800px) {
+          .signup-page {
+            align-items: center;
+          }
         }
 
         /* Background Effects */

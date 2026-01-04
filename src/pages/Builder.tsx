@@ -968,10 +968,16 @@ export default function Builder() {
                 <Sparkles className="prompt-icon-full" />
                 <textarea
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
+                  onChange={(e) => {
+                    setPrompt(e.target.value);
+                    // Auto-expand textarea like Bolt/Lovable
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+                  }}
                   placeholder={validFiles.length > 0 ? "Ask AI to update, fix, or add features to your extension..." : "Describe your Chrome extension idea..."}
                   disabled={isGenerating || credits?.credits === 0}
                   rows={1}
+                  style={{ resize: 'none', overflow: 'hidden', minHeight: '44px', maxHeight: '200px' }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
                 />
                 <button type="submit" disabled={isGenerating || !prompt.trim()} className="prompt-send-full">
