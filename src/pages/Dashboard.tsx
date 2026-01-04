@@ -9,6 +9,7 @@ import {
   CheckCircle, Calendar, CreditCard, LogOut,
   Settings, Zap, TrendingUp, Crown, Sparkles, AlertTriangle, ArrowRight
 } from 'lucide-react';
+import ProjectHistory from '../components/ProjectHistory';
 
 interface UserData {
   email?: string;
@@ -259,6 +260,11 @@ export default function Dashboard() {
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>
+        </section>
+
+        {/* My Projects */}
+        <section className="projects-section" id="projects">
+          <ProjectHistory maxItems={5} showTitle={true} />
         </section>
       </main>
 

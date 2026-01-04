@@ -65,9 +65,9 @@ const OPENROUTER_FREE_MODELS = [
   'microsoft/phi-4:free',                      // #6 Compact but capable
 ];
 
-// Provider priority order - OpenRouter first with BEST free models
-type AIProvider = 'openrouter' | 'gemini' | 'groq';
-const PROVIDER_PRIORITY: AIProvider[] = ['openrouter', 'gemini', 'groq'];
+// Provider priority order - OpenRouter first (FREE models), then Groq. Gemini removed per user request.
+type AIProvider = 'openrouter' | 'groq';
+const PROVIDER_PRIORITY: AIProvider[] = ['openrouter', 'groq'];
 
 // Retry configuration
 const MAX_RETRIES = 3;

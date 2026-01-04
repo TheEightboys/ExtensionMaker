@@ -373,36 +373,41 @@ export default function NewLanding() {
           <span className="nl-section-label">Pricing</span>
           <div className="nl-section-line"></div>
           <h2>Simple pricing</h2>
-          <p>Start free, upgrade when ready</p>
+          <p>Start free, upgrade as you grow. 1 prompt = 3 credits.</p>
         </div>
 
         <div className="nl-pricing-grid">
+          {/* Free Card */}
           <div className="nl-pricing-card">
             <h3>Free</h3>
-            <p className="nl-pricing-desc">Perfect for trying out</p>
-            <div className="nl-price">$0<span>/mo</span></div>
+            <p className="nl-pricing-desc">Try it out</p>
+            <div className="nl-price">$0<span>/forever</span></div>
             <ul>
-              <li><Check size={18} /> 30 credits/month</li>
-              <li><Check size={18} /> 5 generations/day</li>
-              <li><Check size={18} /> All browsers</li>
+              <li><Check size={18} /> 1 free prompt</li>
+              <li><Check size={18} /> All browsers supported</li>
+              <li><Check size={18} /> Code export & download</li>
               <li><Check size={18} /> Community support</li>
             </ul>
             <button onClick={() => navigate('/signup')} className="nl-btn nl-outline nl-full">Start Free</button>
           </div>
 
+          {/* Pro Card with Tier Selection */}
           <div className="nl-pricing-card nl-featured">
             <div className="nl-featured-badge">Popular</div>
             <h3>Pro</h3>
             <p className="nl-pricing-desc">For serious builders</p>
-            <div className="nl-price">$12<span>/mo</span></div>
+            <div className="nl-price">$5<span>+/mo</span></div>
+            <div className="nl-tier-note">Starting at 25 prompts</div>
             <ul>
-              <li><Check size={18} /> 200 credits/month</li>
+              <li><Check size={18} /> 25-1000+ prompts/month</li>
               <li><Check size={18} /> Unlimited daily use</li>
-              <li><Check size={18} /> Code editing</li>
+              <li><Check size={18} /> Full code editing access</li>
+              <li><Check size={18} /> Priority AI models</li>
+              <li><Check size={18} /> Project history & saves</li>
               <li><Check size={18} /> Priority support</li>
-              <li><Check size={18} /> Early features</li>
             </ul>
             <button onClick={() => navigate('/signup')} className="nl-btn nl-primary nl-full">Get Pro</button>
+            <p className="nl-tier-options">$5/mo (25) • $10/mo (50) • $20/mo (100) • Save 10% yearly</p>
           </div>
         </div>
       </section>

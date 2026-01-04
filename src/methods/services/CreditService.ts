@@ -1,7 +1,8 @@
-// src/methods/services/CreditService.ts - FINAL VERSION WITH USER INFO
+// src/methods/services/CreditService.ts - UPDATED WITH NEW CREDIT SYSTEM
 
 import { db } from '../../lib/FirebaseClient';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { CREDITS_PER_PROMPT, FREE_PLAN } from '../../types/plans';
 
 export interface UserCredits {
   plan: 'free' | 'pro';
@@ -14,22 +15,23 @@ export interface UserCredits {
   updatedAt: string;
   subscriptionDate?: string;
   paymentAmount?: number;
-  
-  // Daily limit fields
-  dailyCreditsUsed?: number;
-  lastDailyResetDate?: string;
-  dailyLimit?: number;
-  
-  // User info fields - NEW
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+
+  // Free trial tracking
+  hasUsedFreeTrial: boolean;
+  freeTrialUsedAt?: string;
+
+  // User info fields
   email?: string;
   displayName?: string;
   photoURL?: string;
   lastLogin?: string;
 }
 
-// Initialize user credits with email/name - NEW FUNCTION
+// Initialize user credits with email/name
 export async function initializeUserCredits(
-  userId: string, 
+  userId: string,
   email: string,
   displayName?: string,
   photoURL?: string
@@ -39,41 +41,39 @@ export async function initializeUserCredits(
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-      // Create new user with credits
+      // Create new user with FREE plan credits (1 prompt = 3 credits)
       const now = new Date();
       const defaultCredits: UserCredits = {
         plan: 'free',
-        credits: 30,
-        maxCredits: 30,
+        credits: FREE_PLAN.credits,  // 3 credits = 1 prompt
+        maxCredits: FREE_PLAN.credits,
         billingPeriod: 'monthly',
         lastResetDate: now.toISOString(),
         nextResetDate: getNextResetDate(),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-        dailyCreditsUsed: 0,
-        lastDailyResetDate: getTodayDate(),
-        dailyLimit: 5,
+        hasUsedFreeTrial: false,
         // User info
         email: email,
         displayName: displayName || email.split('@')[0],
-        photoURL: photoURL || null,
+        photoURL: photoURL || undefined,
         lastLogin: now.toISOString()
       };
-      
+
       await setDoc(userRef, {
         ...defaultCredits,
-        creditsRemaining: 30,
-        totalCredits: 30
+        creditsRemaining: FREE_PLAN.credits,
+        totalCredits: FREE_PLAN.credits
       });
-      
+
       console.log('✅ User credits initialized for:', email);
     } else {
       // Update existing user's login time and info
       await updateDoc(userRef, {
         lastLogin: new Date().toISOString(),
-        email: email, // Update in case it changed
+        email: email,
         displayName: displayName || email.split('@')[0],
-        photoURL: photoURL || null,
+        photoURL: photoURL || undefined,
         updatedAt: new Date().toISOString()
       });
       console.log('✅ User info updated for:', email);
@@ -90,47 +90,32 @@ export async function getUserCredits(userId: string): Promise<UserCredits | null
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
+      // Create default free user
       const defaultCredits: UserCredits = {
         plan: 'free',
-        credits: 30,
-        maxCredits: 30,
+        credits: FREE_PLAN.credits,
+        maxCredits: FREE_PLAN.credits,
         billingPeriod: 'monthly',
         lastResetDate: new Date().toISOString(),
         nextResetDate: getNextResetDate(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        dailyCreditsUsed: 0,
-        lastDailyResetDate: getTodayDate(),
-        dailyLimit: 5
+        hasUsedFreeTrial: false
       };
-      
+
       await setDoc(userRef, {
         ...defaultCredits,
-        creditsRemaining: 30,
-        totalCredits: 30
+        creditsRemaining: FREE_PLAN.credits,
+        totalCredits: FREE_PLAN.credits
       });
-      
+
       return defaultCredits;
     }
 
     const data = userDoc.data();
     const userPlan = (data.plan || 'free') as 'free' | 'pro';
-    const maxCredits = data.totalCredits || data.maxCredits || (userPlan === 'pro' ? 200 : 30);
+    const maxCredits = data.totalCredits || data.maxCredits || FREE_PLAN.credits;
     const currentCredits = data.creditsRemaining ?? data.credits ?? maxCredits;
-
-    // Check if daily limit needs reset (new day)
-    const lastDailyReset = data.lastDailyResetDate || getTodayDate();
-    const today = getTodayDate();
-    const needsDailyReset = lastDailyReset !== today;
-
-    if (needsDailyReset && userPlan === 'free') {
-      // Reset daily counter
-      await updateDoc(userRef, {
-        dailyCreditsUsed: 0,
-        lastDailyResetDate: today,
-        updatedAt: new Date().toISOString()
-      });
-    }
 
     return {
       plan: userPlan,
@@ -143,10 +128,10 @@ export async function getUserCredits(userId: string): Promise<UserCredits | null
       updatedAt: data.updatedAt || new Date().toISOString(),
       subscriptionDate: data.subscriptionDate,
       paymentAmount: data.paymentAmount,
-      dailyCreditsUsed: needsDailyReset ? 0 : (data.dailyCreditsUsed || 0),
-      lastDailyResetDate: today,
-      dailyLimit: userPlan === 'free' ? 5 : 999999,
-      // User info
+      stripeCustomerId: data.stripeCustomerId,
+      stripeSubscriptionId: data.stripeSubscriptionId,
+      hasUsedFreeTrial: data.hasUsedFreeTrial || false,
+      freeTrialUsedAt: data.freeTrialUsedAt,
       email: data.email,
       displayName: data.displayName,
       photoURL: data.photoURL,
@@ -158,20 +143,30 @@ export async function getUserCredits(userId: string): Promise<UserCredits | null
   }
 }
 
+// Check if user has enough credits for a prompt
 export async function hasCreditsAvailable(userId: string): Promise<boolean> {
   const credits = await getUserCredits(userId);
   if (!credits) return false;
-  
-  // For free users, check both monthly credits AND daily limit
-  if (credits.plan === 'free') {
-    const dailyLimitReached = (credits.dailyCreditsUsed || 0) >= (credits.dailyLimit || 5);
-    return credits.credits > 0 && !dailyLimitReached;
-  }
-  
-  // Pro users only check monthly credits
-  return credits.credits > 0;
+
+  // Need at least CREDITS_PER_PROMPT credits to generate
+  return credits.credits >= CREDITS_PER_PROMPT;
 }
 
+// Check if free user needs to upgrade (used their 1 free prompt)
+export async function needsUpgrade(userId: string): Promise<boolean> {
+  const credits = await getUserCredits(userId);
+  if (!credits) return true;
+
+  // Free users who have used their trial need to upgrade
+  if (credits.plan === 'free' && credits.hasUsedFreeTrial) {
+    return true;
+  }
+
+  // Anyone with insufficient credits needs to upgrade
+  return credits.credits < CREDITS_PER_PROMPT;
+}
+
+// Use credits for a prompt (costs CREDITS_PER_PROMPT = 3)
 export async function useCredit(userId: string): Promise<boolean> {
   try {
     const userRef = doc(db, 'userCredits', userId);
@@ -182,34 +177,29 @@ export async function useCredit(userId: string): Promise<boolean> {
     const currentCredits = data.creditsRemaining ?? data.credits ?? 0;
     const userPlan = data.plan || 'free';
 
-    if (currentCredits <= 0) return false;
-
-    // Check daily limit for free users
-    if (userPlan === 'free') {
-      const dailyUsed = data.dailyCreditsUsed || 0;
-      const dailyLimit = data.dailyLimit || 5;
-      
-      if (dailyUsed >= dailyLimit) {
-        console.error('[CREDITS] Daily limit reached');
-        return false;
-      }
-
-      // Deduct credit and increment daily counter
-      await updateDoc(userRef, {
-        creditsRemaining: currentCredits - 1,
-        credits: currentCredits - 1,
-        dailyCreditsUsed: dailyUsed + 1,
-        updatedAt: new Date().toISOString()
-      });
-    } else {
-      // Pro users - just deduct credit
-      await updateDoc(userRef, {
-        creditsRemaining: currentCredits - 1,
-        credits: currentCredits - 1,
-        updatedAt: new Date().toISOString()
-      });
+    if (currentCredits < CREDITS_PER_PROMPT) {
+      console.error('[CREDITS] Not enough credits. Need:', CREDITS_PER_PROMPT, 'Have:', currentCredits);
+      return false;
     }
 
+    const newCredits = currentCredits - CREDITS_PER_PROMPT;
+
+    // Update credits and mark free trial as used if applicable
+    const updateData: Record<string, unknown> = {
+      creditsRemaining: newCredits,
+      credits: newCredits,
+      updatedAt: new Date().toISOString()
+    };
+
+    // If free user using their only prompt, mark trial as used
+    if (userPlan === 'free' && !data.hasUsedFreeTrial) {
+      updateData.hasUsedFreeTrial = true;
+      updateData.freeTrialUsedAt = new Date().toISOString();
+    }
+
+    await updateDoc(userRef, updateData);
+
+    console.log('[CREDITS] Used', CREDITS_PER_PROMPT, 'credits. Remaining:', newCredits);
     return true;
   } catch (error) {
     console.error('[CREDITS] Error using credit:', error);
@@ -217,10 +207,40 @@ export async function useCredit(userId: string): Promise<boolean> {
   }
 }
 
+// Add credits after purchase
+export async function addCredits(userId: string, creditsToAdd: number, plan: 'free' | 'pro' = 'pro'): Promise<boolean> {
+  try {
+    const userRef = doc(db, 'userCredits', userId);
+    const userDoc = await getDoc(userRef);
+
+    const existingData = userDoc.exists() ? userDoc.data() : {};
+    const currentCredits = existingData.creditsRemaining ?? existingData.credits ?? 0;
+    const newCredits = currentCredits + creditsToAdd;
+
+    await setDoc(userRef, {
+      ...existingData,
+      plan: plan,
+      credits: newCredits,
+      creditsRemaining: newCredits,
+      maxCredits: Math.max(newCredits, existingData.maxCredits || 0),
+      totalCredits: Math.max(newCredits, existingData.totalCredits || 0),
+      updatedAt: new Date().toISOString(),
+      lastResetDate: new Date().toISOString(),
+      nextResetDate: getNextResetDate()
+    }, { merge: true });
+
+    console.log('[CREDITS] Added', creditsToAdd, 'credits. New total:', newCredits);
+    return true;
+  } catch (error) {
+    console.error('[CREDITS] Error adding credits:', error);
+    return false;
+  }
+}
+
 // Get today's date as YYYY-MM-DD
 function getTodayDate(): string {
   const today = new Date();
-  return today.toISOString().split('T')[0]; // Returns "2025-10-14"
+  return today.toISOString().split('T')[0];
 }
 
 function getNextResetDate(): string {
@@ -244,13 +264,11 @@ export async function resetCredits(userId: string): Promise<boolean> {
     if (!userDoc.exists()) return false;
 
     const data = userDoc.data();
-    const maxCredits = data.totalCredits || data.maxCredits || 30;
+    const maxCredits = data.totalCredits || data.maxCredits || FREE_PLAN.credits;
 
     await updateDoc(userRef, {
       creditsRemaining: maxCredits,
       credits: maxCredits,
-      dailyCreditsUsed: 0,
-      lastDailyResetDate: getTodayDate(),
       lastReset: new Date().toISOString(),
       lastResetDate: new Date().toISOString(),
       nextResetDate: getNextResetDate(),
@@ -269,15 +287,20 @@ export function formatResetDate(nextResetDate: string): string {
   const now = new Date();
   const diffTime = date.getTime() - now.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) return 'today';
   if (diffDays === 1) return 'tomorrow';
   if (diffDays < 7) return `in ${diffDays} days`;
   if (diffDays < 30) return `in ${Math.floor(diffDays / 7)} weeks`;
-  
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
   });
+}
+
+// Get prompts remaining (credits / CREDITS_PER_PROMPT)
+export function getPromptsRemaining(credits: number): number {
+  return Math.floor(credits / CREDITS_PER_PROMPT);
 }

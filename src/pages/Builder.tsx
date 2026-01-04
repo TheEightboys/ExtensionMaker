@@ -15,12 +15,14 @@ import {
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/FirebaseClient';
 import { generateExtensionCode, GeneratedFile, Message, TerminalCommand, StreamCallbacks } from '../methods/services/aiService';
-import { getUserCredits, hasCreditsAvailable, useCredit, UserCredits } from '../methods/services/CreditService';
+import { getUserCredits, hasCreditsAvailable, useCredit, UserCredits, getPromptsRemaining } from '../methods/services/CreditService';
+import { CREDITS_PER_PROMPT } from '../types/plans';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import CodePreview from '../components/CodePreview';
 import Terminal from '../components/Terminal';
 import AgentStatus from '../components/AgentStatus';
+import BuyCreditsModal from '../components/BuyCreditsModal';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -146,6 +148,7 @@ export default function Builder() {
   // Credits state
   const [credits, setCredits] = useState<UserCredits | null>(null);
   const [creditsLoaded, setCreditsLoaded] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [hasProcessedInitialPrompt, setHasProcessedInitialPrompt] = useState(false);
 
   // Refs
@@ -316,14 +319,13 @@ export default function Builder() {
       try {
         const hasCredits = await hasCreditsAvailable(user.uid);
         if (!hasCredits) {
-          if (credits?.plan === 'free') {
-            const dailyUsed = credits.dailyCreditsUsed || 0;
-            if (dailyUsed >= (credits.dailyLimit || 5)) {
-              alert('Daily limit reached! Upgrade to Pro for unlimited prompts.');
-              return;
-            }
-          }
-          alert('No credits remaining. Please upgrade or wait for reset.');
+          // Show upgrade modal instead of alert
+          setShowUpgradeModal(true);
+          return;
+        }
+        // Check if free user has used their trial
+        if (credits?.plan === 'free' && credits?.hasUsedFreeTrial) {
+          setShowUpgradeModal(true);
           return;
         }
       } catch (err) {
@@ -1052,6 +1054,14 @@ export default function Builder() {
           </div>
         </div>
       )}
+
+      {/* Buy Credits Modal */}
+      <BuyCreditsModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        creditsRemaining={credits?.credits || 0}
+        hasUsedFreeTrial={credits?.hasUsedFreeTrial || false}
+      />
     </div>
   );
 }
